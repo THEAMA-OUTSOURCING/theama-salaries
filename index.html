@@ -415,11 +415,19 @@ async function doSetPass(){
   const btn = document.getElementById('setpass-btn');
   btn.innerHTML='<span class="spinner"></span> جاري الحفظ...'; btn.disabled=true;
   try{
+    console.log('hashing password...');
     const hashed = await hashPass(p1);
+    console.log('hash done:', hashed.substring(0,10));
+    console.log('saving to firebase, code:', loggedUser.code);
     await setDoc(doc(db,'passwords',loggedUser.code),{pass:hashed, updated_at: new Date().toISOString()});
+    console.log('saved successfully!');
     renderSalary();
     showScreen('salary-screen');
-  }catch(e){document.getElementById('setpass-error-msg').textContent='خطأ في الحفظ، حاول تاني';errEl.style.display='block';}
+  }catch(e){
+    console.error('ERROR saving password:', e);
+    document.getElementById('setpass-error-msg').textContent='خطأ: '+e.message;
+    errEl.style.display='block';
+  }
   btn.innerHTML='حفظ كلمة المرور <i class="ti ti-check" style="font-size:16px;vertical-align:-2px;margin-right:4px;"></i>'; btn.disabled=false;
 }
 window.doSetPass = doSetPass;
@@ -458,7 +466,8 @@ function renderSalary(){
   const infoVals = infoSearches.map(s=>{
     const k=Object.keys(r).find(k=>k.trim().includes(s));
     return k?r[k]:null;
-  }).filter(v=>v&&String(v).trim()&&String(v)!=='nan'&&String(v)!=='NaN'&&String(v)!=='undefined');Content = infoVals.slice(0,3).join(' — ');
+  }).filter(v=>v&&String(v).trim()&&String(v)!=='nan'&&String(v)!=='NaN'&&String(v)!=='undefined');
+  document.getElementById('emp-meta-display').textContent = infoVals.slice(0,3).join(' — ');
 
   const container = document.getElementById('months-container');
   container.innerHTML='';

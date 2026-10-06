@@ -217,6 +217,9 @@ input[type=file]{width:100%;padding:8px;cursor:pointer;font-size:13px;border:1px
   </div>
   <div id="admin-upload-box" style="display:none;">
     <div id="server-status" class="info-box" style="margin-bottom:12px;">جاري التحقق من حالة السيرفر...</div>
+    <div class="card att-only" style="display:none;">
+      <a href="attendance.html" style="display:flex;align-items:center;gap:8px;font-size:14px;font-weight:500;color:#222;text-decoration:none;"><i class="ti ti-camera" style="font-size:18px;color:#c0392b;"></i>تسجيل الحضور اليومي<i class="ti ti-chevron-left" style="margin-right:auto;color:#aaa;"></i></a>
+    </div>
     <div class="card office-only" style="display:none;">
       <a href="plan.html" style="display:flex;align-items:center;gap:8px;font-size:14px;font-weight:500;color:#222;text-decoration:none;"><i class="ti ti-chart-bar" style="font-size:18px;color:#c0392b;"></i>الاحتياج والأعداد والحسابات<i class="ti ti-chevron-left" style="margin-right:auto;color:#aaa;"></i></a>
     </div>
@@ -476,10 +479,12 @@ onAuthStateChanged(auth, async (user)=>{
   const uploadBox = document.getElementById('admin-upload-box');
   if(!loginBox || !uploadBox) return;
   let role = null;
+  let userSites = null;
   if(user){
     try{
       const tok = await user.getIdTokenResult();
       role = tok.claims.role || null;
+      userSites = Array.isArray(tok.claims.sites) ? tok.claims.sites : null;
     }catch(e){ console.error('role read error:', e); }
   }
   const firstRun = !authInitDone;
@@ -506,6 +511,10 @@ onAuthStateChanged(auth, async (user)=>{
     });
     document.querySelectorAll('.office-only').forEach(el=>{
       el.style.display = isOfficeRole ? '' : 'none';
+    });
+    const isAttRole = (role === 'admin' || (role === 'supervisor' && userSites && userSites.length));
+    document.querySelectorAll('.att-only').forEach(el=>{
+      el.style.display = isAttRole ? '' : 'none';
     });
     loginBox.style.display='none';
     uploadBox.style.display='block';

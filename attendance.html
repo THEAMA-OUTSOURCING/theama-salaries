@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>تسجيل الحضور - Theama</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&display=swap">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'IBM Plex Sans Arabic','Segoe UI',Tahoma,sans-serif;background:#f5f5f0;color:#222;min-height:100vh;padding:12px;font-size:15px;line-height:1.6;}
+input,button,select{font-family:inherit;font-size:15px;}
+input[type=email],input[type=password],input[type=date],select{width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:10px;background:#fff;color:#222;}
+input:focus,select:focus{outline:none;border-color:#c0392b;}
+button:focus-visible{outline:2px solid #185fa5;outline-offset:2px;}
+.wrap{max-width:760px;margin:0 auto;}
+.card{background:#fff;border:1px solid #e5e5e5;border-radius:14px;padding:14px 16px;margin-bottom:12px;}
+h1{font-size:19px;font-weight:600;}
+h2{font-size:15px;font-weight:600;margin-bottom:8px;}
+.muted{color:#888;font-size:13px;}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
+.grow{flex:1 1 160px;}
+.btn{padding:11px 18px;font-weight:500;cursor:pointer;background:#c0392b;color:#fff;border:none;border-radius:10px;}
+.btn:disabled{background:#e0a09a;cursor:not-allowed;}
+.btn.sec{background:#f5f5f0;color:#444;border:1px solid #ddd;}
+.btn.small{padding:5px 10px;font-size:13px;}
+.btn.block{width:100%;}
+.msg{padding:10px 12px;border-radius:10px;font-size:14px;margin-top:10px;display:none;white-space:pre-line;}
+.msg.show{display:block;}
+.msg.ok{background:#eaf3de;color:#3b6d11;} .msg.err{background:#fcebeb;color:#a32d2d;}
+.msg.warn{background:#fff5de;color:#8a5a10;} .msg.info{background:#eef4fb;color:#185fa5;}
+.upl{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;border:2px dashed #d8b4ae;border-radius:14px;padding:18px;background:#fffaf9;cursor:pointer;text-align:center;}
+.upl i{font-size:30px;color:#c0392b;}
+.pages{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-top:12px;}
+.pg{border:1px solid #e5e5e5;border-radius:12px;overflow:hidden;background:#fafafa;font-size:13px;}
+.pg img{width:100%;height:110px;object-fit:cover;display:block;cursor:zoom-in;background:#eee;}
+.pg .b{padding:7px 9px;}
+.pill{display:inline-block;padding:1px 9px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap;}
+.p-ok{background:#eaf3de;color:#3b6d11;} .p-wait{background:#eef4fb;color:#185fa5;} .p-err{background:#fcebeb;color:#a32d2d;} .p-warn{background:#fff5de;color:#8a5a10;} .p-grey{background:#eee;color:#666;}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:#e5e5e5;border:1px solid #e5e5e5;border-radius:12px;overflow:hidden;margin-bottom:12px;}
+.stat{background:#fff;padding:8px 10px;text-align:center;}
+.stat .v{font-size:20px;font-weight:600;font-variant-numeric:tabular-nums;}
+.stat .l{font-size:11px;color:#888;}
+.grp{font-size:13px;font-weight:600;color:#fff;background:#2b2b2b;border-radius:8px;padding:4px 10px;margin:12px 0 6px;}
+.w{display:flex;align-items:center;gap:8px;padding:8px 6px;border-bottom:1px solid #f0efe9;}
+.w.flag{background:#fffaf0;}
+.w.missing{background:#f6f6f6;}
+.w .nm{flex:1;min-width:0;}
+.w .nm b{font-weight:500;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.w .nm small{color:#888;font-size:12px;display:block;}
+.seg{display:flex;border:1px solid #ddd;border-radius:9px;overflow:hidden;flex-shrink:0;}
+.seg button{border:none;background:#fff;padding:6px 11px;font-size:13px;cursor:pointer;color:#555;}
+.seg button[aria-pressed=true].p{background:#3b6d11;color:#fff;}
+.seg button[aria-pressed=true].a{background:#a32d2d;color:#fff;}
+.hidden{display:none !important;}
+.center{max-width:380px;margin:50px auto;}
+.viewer{position:fixed;inset:0;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;z-index:50;padding:10px;}
+.viewer img{max-width:100%;max-height:100%;}
+.sticky{position:sticky;bottom:0;background:#f5f5f0;padding:10px 0 4px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div id="login" class="card center hidden">
+    <h2>تسجيل الحضور</h2>
+    <p class="muted" style="margin-bottom:12px;">ادخل بحساب الموقع.</p>
+    <div style="display:flex;flex-direction:column;gap:8px;">
+      <input type="email" id="l-email" placeholder="الإيميل" autocomplete="username" dir="ltr">
+      <input type="password" id="l-pass" placeholder="الباسورد" autocomplete="current-password" dir="ltr">
+      <button class="btn" id="l-btn">دخول</button>
+    </div>
+    <div class="msg err" id="l-err"></div>
+  </div>
+
+  <div id="denied" class="card center hidden">
+    <h2>الحساب ده مالوش تسجيل حضور</h2>
+    <p class="muted">الصفحة دي لحسابات المواقع بس.</p>
+    <button class="btn sec" id="d-out" style="margin-top:12px;">خروج</button>
+  </div>
+
+  <div id="app" class="hidden">
+    <div class="row" style="justify-content:space-between;margin-bottom:10px;">
+      <div><h1>تسجيل الحضور</h1><div class="muted" id="who"></div></div>
+      <div class="row"><a href="index.html" class="btn sec small" style="text-decoration:none;">البوابة</a><button class="btn sec small" id="logout">خروج</button></div>
+    </div>
+
+    <div class="card">
+      <div class="row">
+        <label class="grow"><span class="muted">الموقع</span><select id="site"></select></label>
+        <label class="grow"><span class="muted">يوم الحضور</span><input type="date" id="date"></label>
+      </div>
+      <div class="msg" id="deadline"></div>
+      <div class="msg" id="day-state"></div>
+    </div>
+
+    <div class="card" id="upload-card">
+      <h2>صور الكشف</h2>
+      <label class="upl" for="file">
+        <i class="ti ti-camera-plus"></i>
+        <b>صوّر صفحات الكشف</b>
+        <span class="muted">كل صفحة صورة. ممكن تختار أكتر من صورة مرة واحدة، وبأي ترتيب.</span>
+      </label>
+      <input type="file" id="file" accept="image/*" multiple class="hidden">
+      <div class="msg" id="up-msg"></div>
+      <div class="pages" id="pages"></div>
+    </div>
+
+    <div id="review" class="hidden">
+      <div class="stats" id="stats"></div>
+      <div class="msg" id="checks"></div>
+      <div class="card">
+        <h2>العمال</h2>
+        <p class="muted" style="margin-bottom:4px;">اللي متلوّن بالأصفر محتاج تراجعه، واللي بالرمادي مش موجود في أي صورة لسه.</p>
+        <div id="workers"></div>
+      </div>
+      <div class="card hidden" id="extra-card">
+        <h2>صفوف مكتوبة بخط اليد أو مش متطابقة</h2>
+        <p class="muted" style="margin-bottom:6px;">دول مش هيتسجلوا دلوقتي. إضافة الأسماء الجديدة والبدلاء بالبطاقة جاية في التحديث الجاي.</p>
+        <div id="extras"></div>
+      </div>
+      <div class="sticky">
+        <button class="btn block" id="confirm">تأكيد الحضور</button>
+        <div class="msg" id="c-msg"></div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="viewer hidden" id="viewer"><img id="viewer-img" alt="صورة الكشف"></div>
+
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+import { getFirestore, collection, addDoc, doc, getDoc, setDoc, deleteDoc, query, where, onSnapshot, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+
+const app = initializeApp({
+  apiKey: "AIzaSyBscBbgFrEd76NjDgNPpymF1nmlvlpprdg",
+  authDomain: "theama-salaries.firebaseapp.com",
+  projectId: "theama-salaries",
+  storageBucket: "theama-salaries.firebasestorage.app",
+  messagingSenderId: "469549638177",
+  appId: "1:469549638177:web:4e5c1d4c055108312cb960"
+});
+const db = getFirestore(app);
+const auth = getAuth(app);
+
+const ATT_SITES = ["فرع العامرية", "فرع العجمى", "مصنع العامرية", "دمنهور", "كفر الدوار", "المنصورة", "فرع طنطا", "طنطا مصنع"];
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const fmt = n => Number(n || 0).toLocaleString("ar-EG");
+function show(el, type, text) { el.className = "msg show " + type; el.textContent = text; }
+function hide(el) { el.className = "msg"; el.textContent = ""; }
+const pad = n => String(n).padStart(2, "0");
+const ymd = d => d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+
+const S = { sites: [], site: null, date: null, roster: [], pages: [], day: null, choice: {}, unsubPages: null, unsubDay: null };
+
+// ===== الدخول =====
+$("l-btn").addEventListener("click", async () => {
+  hide($("l-err"));
+  try { await signInWithEmailAndPassword(auth, $("l-email").value.trim(), $("l-pass").value); }
+  catch (e) { show($("l-err"), "err", "الإيميل أو الباسورد غلط"); }
+});
+$("l-pass").addEventListener("keydown", e => { if (e.key === "Enter") $("l-btn").click(); });
+$("logout").addEventListener("click", () => signOut(auth));
+$("d-out").addEventListener("click", () => signOut(auth));
+
+onAuthStateChanged(auth, async user => {
+  ["login", "denied", "app"].forEach(id => $(id).classList.add("hidden"));
+  if (!user) { $("login").classList.remove("hidden"); return; }
+  let claims = {};
+  try { claims = (await user.getIdTokenResult()).claims || {}; } catch (e) {}
+  if (claims.role === "admin") S.sites = ATT_SITES;
+  else if (claims.role === "supervisor" && Array.isArray(claims.sites) && claims.sites.length) S.sites = claims.sites;
+  else { $("denied").classList.remove("hidden"); return; }
+  $("who").textContent = user.email;
+  $("site").innerHTML = S.sites.map(s => `<option>${esc(s)}</option>`).join("");
+  const y = new Date(); y.setDate(y.getDate() - 1);
+  $("date").max = ymd(new Date());
+  $("date").value = ymd(y);
+  $("app").classList.remove("hidden");
+  await openDay();
+});
+$("site").addEventListener("change", openDay);
+$("date").addEventListener("change", openDay);
+
+// ===== فتح يوم =====
+function deadlineOf(date) {
+  const [y, m, d] = date.split("-").map(Number);
+  return new Date(y, m - 1, d + 2, 9, 0, 0);
+}
+async function openDay() {
+  S.site = $("site").value; S.date = $("date").value;
+  if (!S.site || !S.date) return;
+  S.unsubPages?.(); S.unsubDay?.();
+  S.pages = []; S.day = null; S.choice = {};
+  hide($("up-msg")); hide($("c-msg"));
+  const dl = deadlineOf(S.date);
+  if (new Date() > dl) show($("deadline"), "err", `المهلة خلصت (${dl.toLocaleString("ar-EG", { weekday: "long", day: "numeric", month: "long", hour: "numeric", minute: "2-digit" })}). الرفع متاح، بس هيتسجل متأخر.`);
+  else show($("deadline"), "info", `آخر ميعاد للرفع: ${dl.toLocaleString("ar-EG", { weekday: "long", day: "numeric", month: "long", hour: "numeric", minute: "2-digit" })}`);
+
+  try {
+    const r = await getDoc(doc(db, "rosters", S.site));
+    S.roster = r.exists() ? (r.data().workers || []) : [];
+  } catch (e) { S.roster = []; }
+  if (!S.roster.length) show($("day-state"), "err", "كشف الموقع مش موجود لسه. الأدمن لازم يعمل مزامنة من لوحة الإدارة.");
+  else hide($("day-state"));
+
+  S.unsubDay = onSnapshot(doc(db, "att_days", S.site + "__" + S.date), snap => {
+    S.day = snap.exists() ? snap.data() : null;
+    if (S.day) {
+      const fromSaved = {};
+      Object.entries(S.day.entries || {}).forEach(([c, e]) => fromSaved[c] = e.s);
+      S.choice = { ...fromSaved, ...S.choice };
+      const t = S.day.confirmed_at?.toDate ? S.day.confirmed_at.toDate().toLocaleString("ar-EG") : "";
+      if (S.day.status === "approved") show($("day-state"), "ok", "اليوم ده اتعتمد من HR، ومينفعش يتعدل.");
+      else show($("day-state"), "ok", `اليوم ده متأكد${t ? " — " + t : ""}${S.day.late ? " (متأخر)" : ""}. تقدر تعدّل وتأكد تاني لحد ما HR تعتمده.`);
+    }
+    render();
+  }, () => {});
+  S.unsubPages = onSnapshot(query(collection(db, "att_pages"), where("site", "==", S.site), where("date", "==", S.date)), snap => {
+    S.pages = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (a.created_at?.seconds || 0) - (b.created_at?.seconds || 0));
+    render();
+  }, err => show($("up-msg"), "err", "مش قادر أقرا الصور: " + err.message));
+}
+
+// ===== رفع الصور =====
+async function compress(file) {
+  const bmp = await createImageBitmap(file, { imageOrientation: "from-image" });
+  const maxSide = 1800;
+  const k = Math.min(1, maxSide / Math.max(bmp.width, bmp.height));
+  const c = document.createElement("canvas");
+  c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+  c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+  for (const q of [0.82, 0.72, 0.62, 0.5]) {
+    const data = c.toDataURL("image/jpeg", q).split(",")[1];
+    if (data.length < 900000) return data;
+  }
+  throw new Error("الصورة كبيرة جداً");
+}
+$("file").addEventListener("change", async e => {
+  const files = [...e.target.files]; e.target.value = "";
+  if (!files.length) return;
+  if (S.day?.status === "approved") return show($("up-msg"), "err", "اليوم ده اتعتمد، مينفعش يترفعله صور.");
+  const u = auth.currentUser;
+  let ok = 0;
+  for (let i = 0; i < files.length; i++) {
+    show($("up-msg"), "info", `بيرفع صورة ${i + 1} من ${files.length}...`);
+    try {
+      const image = await compress(files[i]);
+      await addDoc(collection(db, "att_pages"), {
+        site: S.site, date: S.date, image, uploaded_by: u.uid, uploaded_email: u.email || "",
+        status: "pending", created_at: serverTimestamp()
+      });
+      ok++;
+    } catch (err) {
+      show($("up-msg"), "err", `صورة ${i + 1} ماترفعتش: ` + (err.code === "permission-denied" ? "مش مسموح للحساب ده." : err.message));
+      return;
+    }
+  }
+  show($("up-msg"), "ok", `اترفع ${fmt(ok)} صورة. القراءة بتاخد حوالي دقيقة لكل صورة، والنتيجة هتظهر لوحدها.`);
+});
+$("pages").addEventListener("click", async e => {
+  const del = e.target.closest("[data-del]");
+  if (del) {
+    if (!confirm("تمسح الصورة دي؟ نتيجتها هتتشال من الحضور.")) return;
+    try { await deleteDoc(doc(db, "att_pages", del.dataset.del)); }
+    catch (err) { show($("up-msg"), "err", "مااتمسحتش: " + err.message); }
+    return;
+  }
+  const img = e.target.closest("img[data-view]");
+  if (img) { $("viewer-img").src = img.src; $("viewer").classList.remove("hidden"); }
+});
+$("viewer").addEventListener("click", () => $("viewer").classList.add("hidden"));
+
+// ===== العرض =====
+function aiState() {
+  // آخر قراءة لكل عامل من الصور اللي خلصت
+  const map = {};
+  S.pages.filter(p => p.status === "done").forEach(p => {
+    (p.result?.rows || []).forEach(r => { if (r.code) map[r.code] = { ...r, page: p.id }; });
+  });
+  return map;
+}
+function needsReview(r) { return !r || r.s === "U" || r.conf === "L" || r.match === "fuzzy"; }
+
+function render() {
+  const busy = S.pages.filter(p => p.status === "pending" || p.status === "reading").length;
+  $("pages").innerHTML = S.pages.map(p => {
+    const res = p.result || {};
+    const rows = res.rows || [];
+    const pres = rows.filter(r => r.s === "P").length, abs = rows.filter(r => r.s === "A").length;
+    const reps = rows.filter(r => r.s === "A" && r.note).length, extra = (res.extra || []).length;
+    const calc = pres + reps + extra;
+    let st;
+    if (p.status === "pending") st = `<span class="pill p-wait">مستني السيرفر</span>`;
+    else if (p.status === "reading") st = `<span class="pill p-wait">بيقرا...</span>`;
+    else if (p.status === "error") st = `<span class="pill p-err">فشلت</span><div class="muted">${esc(p.error || "")}</div>`;
+    else st = `<span class="pill p-ok">${fmt(rows.length)} صف</span> ` +
+      (res.count == null ? `<span class="pill p-warn">العدد المكتوب مااتقراش</span>`
+        : res.count === calc ? `<span class="pill p-ok">العدد ${fmt(calc)} ✓</span>`
+        : `<span class="pill p-warn">مكتوب ${fmt(res.count)} / محسوب ${fmt(calc)}</span>`);
+    const mine = p.uploaded_by === auth.currentUser?.uid && p.status !== "reading" && S.day?.status !== "approved";
+    return `<div class="pg"><img src="data:image/jpeg;base64,${p.image}" data-view alt="صفحة">
+      <div class="b">${st}${mine ? `<div style="margin-top:6px;"><button class="btn sec small" data-del="${p.id}">مسح</button></div>` : ""}</div></div>`;
+  }).join("");
+
+  const hasDone = S.pages.some(p => p.status === "done") || S.day;
+  $("review").classList.toggle("hidden", !hasDone || !S.roster.length);
+  if (!hasDone || !S.roster.length) return;
+
+  const ai = aiState();
+  const groups = {};
+  S.roster.forEach(w => { const g = (w.type === "موسمي" ? "موسمي — " : "") + w.job; (groups[g] ??= []).push(w); });
+  let P = 0, A = 0, open = 0, flagged = 0;
+  const html = Object.entries(groups).map(([g, ws]) => `<div class="grp">${esc(g)} (${fmt(ws.length)})</div>` + ws.map(w => {
+    const r = ai[w.code];
+    const def = S.choice[w.code] ?? (r && r.s !== "U" && !needsReview(r) ? r.s : null);
+    if (def === "P") P++; else if (def === "A") A++; else open++;
+    const flag = r && needsReview(r);
+    if (flag) flagged++;
+    const why = !r ? "مش موجود في أي صورة"
+      : r.s === "U" ? "القراءة مش واضحة"
+      : r.match === "fuzzy" ? "الرقم القومي اتقرا بفرق بسيط"
+      : r.conf === "L" ? "القراءة مش أكيدة" : "";
+    const aiTxt = r ? (r.s === "P" ? "قرا: حاضر" : r.s === "A" ? `قرا: غايب${r.word ? " (" + esc(r.word) + ")" : ""}` : "قرا: مش واضح") : "";
+    const note = r?.note ? ` — ملاحظة: ${esc(r.note)}` : "";
+    const ro = S.day?.status === "approved" ? "disabled" : "";
+    return `<div class="w ${!r ? "missing" : flag ? "flag" : ""}">
+      <div class="nm"><b>${esc(w.name)}</b><small>${esc(aiTxt)}${note}${why ? ` · <span style="color:#8a5a10">${esc(why)}</span>` : ""}</small></div>
+      <div class="seg"><button class="p" data-c="${w.code}" data-v="P" aria-pressed="${def === "P"}" ${ro}>حاضر</button><button class="a" data-c="${w.code}" data-v="A" aria-pressed="${def === "A"}" ${ro}>غايب</button></div></div>`;
+  }).join("")).join("");
+  $("workers").innerHTML = html;
+
+  $("stats").innerHTML = [[P, "حاضر"], [A, "غايب"], [open, "محتاج قرار"], [flagged, "اتعلّم للمراجعة"]]
+    .map(([v, l]) => `<div class="stat"><div class="v">${fmt(v)}</div><div class="l">${l}</div></div>`).join("");
+
+  // صفوف من غير عامل معروف + المكتوبة بخط اليد
+  const loose = [];
+  S.pages.filter(p => p.status === "done").forEach(p => {
+    (p.result?.rows || []).filter(r => !r.code).forEach(r => loose.push(`صف ${esc(r.n)}: رقم قومي ${esc(r.nid || "مش مقروء")} — ${r.s === "P" ? "حاضر" : r.s === "A" ? "غايب" : "مش واضح"}`));
+    (p.result?.extra || []).forEach(x => loose.push(`بخط اليد: ${esc(x.name || "اسم مش مقروء")}${x.nid ? " — " + esc(x.nid) : ""}${x.note ? " — " + esc(x.note) : ""}`));
+  });
+  $("extra-card").classList.toggle("hidden", !loose.length);
+  $("extras").innerHTML = loose.map(t => `<div class="muted" style="padding:4px 0;border-bottom:1px solid #f0efe9;">${t}</div>`).join("");
+
+  const msgs = [];
+  if (busy) msgs.push(`فيه ${fmt(busy)} صورة لسه بتتقري.`);
+  const missing = S.roster.filter(w => !ai[w.code]).length;
+  if (missing && S.pages.some(p => p.status === "done")) msgs.push(`${fmt(missing)} عامل مالهمش صف في أي صورة — اتأكد إنك صوّرت كل الصفحات، أو حدد حالتهم بإيدك.`);
+  if (msgs.length) show($("checks"), "warn", msgs.join("\n")); else hide($("checks"));
+
+  const btn = $("confirm");
+  btn.disabled = open > 0 || busy > 0 || S.day?.status === "approved";
+  btn.textContent = open > 0 ? `فاضل ${fmt(open)} عامل محتاجين قرار` : busy ? "استنى لحد ما الصور تتقري" : (S.day ? "تأكيد التعديل" : "تأكيد الحضور");
+}
+
+$("workers").addEventListener("click", e => {
+  const b = e.target.closest("button[data-c]"); if (!b) return;
+  S.choice[b.dataset.c] = b.dataset.v;
+  render();
+});
+
+// ===== التأكيد =====
+$("confirm").addEventListener("click", async () => {
+  const ai = aiState(), u = auth.currentUser;
+  const entries = {};
+  let P = 0, A = 0;
+  for (const w of S.roster) {
+    const r = ai[w.code];
+    const s = S.choice[w.code] ?? (r && !needsReview(r) ? r.s : null);
+    if (s !== "P" && s !== "A") return show($("c-msg"), "err", "فيه عمال لسه محتاجين قرار.");
+    if (s === "P") P++; else A++;
+    entries[w.code] = { s, ai: r ? r.s : "", by: S.choice[w.code] && (!r || S.choice[w.code] !== r.s) ? "sup" : "ai", note: r?.note || "", page: r?.page || "" };
+  }
+  const late = new Date() > deadlineOf(S.date);
+  if (late && !confirm(`اتأخرت في رفع حضور يوم ${S.date}.\nالتأخير بيتسجل وبيأثر على تقييمك وراتبك.\n\nتأكد الحضور؟`)) return;
+  if (!late && !confirm(`تأكيد حضور ${S.site} يوم ${S.date}:\nحاضر ${P} — غايب ${A}`)) return;
+  $("confirm").disabled = true;
+  try {
+    await setDoc(doc(db, "att_days", S.site + "__" + S.date), {
+      site: S.site, date: S.date, status: "confirmed", entries,
+      counts: { present: P, absent: A, total: S.roster.length },
+      pages: S.pages.filter(p => p.status === "done").map(p => p.id),
+      late: late || !!S.day?.late,
+      confirmed_by: u.uid, confirmed_email: u.email || "", confirmed_at: serverTimestamp()
+    });
+    S.choice = {};
+    show($("c-msg"), "ok", "اتأكد الحضور ✓");
+  } catch (err) {
+    show($("c-msg"), "err", "ماتأكدش: " + (err.code === "permission-denied" ? "مش مسموح (يمكن اليوم اتعتمد)." : err.message));
+  }
+  $("confirm").disabled = false;
+});
+</script>
+</body>
+</html>

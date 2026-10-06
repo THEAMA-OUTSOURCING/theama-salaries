@@ -91,6 +91,7 @@ h2{font-size:15px;font-weight:600;margin-bottom:8px;}
         <label class="grow"><span class="muted">الموقع</span><select id="site"></select></label>
         <label class="grow"><span class="muted">يوم الحضور</span><input type="date" id="date"></label>
       </div>
+      <button class="btn sec block" id="print" style="margin-top:10px;"><i class="ti ti-printer"></i> طباعة الكشف</button>
       <div class="msg" id="deadline"></div>
       <div class="msg" id="day-state"></div>
     </div>
@@ -404,6 +405,92 @@ $("confirm").addEventListener("click", async () => {
     show($("c-msg"), "err", "ماتأكدش: " + (err.code === "permission-denied" ? "مش مسموح (يمكن اليوم اتعتمد)." : err.message));
   }
   $("confirm").disabled = false;
+});
+// ===== طباعة الكشف اليومي =====
+const ROWS_PER_PAGE = 25, OWN_PAGE_MIN = 13;
+function buildSheets(workers) {
+  const groups = {};
+  workers.forEach(w => (groups[w.job] ??= []).push(w));
+  const sheets = [], small = [];
+  Object.entries(groups).sort((a, b) => b[1].length - a[1].length).forEach(([job, ws]) => {
+    if (ws.length < OWN_PAGE_MIN) { small.push([job, ws]); return; }
+    const parts = Math.ceil(ws.length / ROWS_PER_PAGE);
+    for (let i = 0; i < ws.length; i += ROWS_PER_PAGE)
+      sheets.push({ jobs: [job], part: i / ROWS_PER_PAGE + 1, parts, rows: ws.slice(i, i + ROWS_PER_PAGE).map(w => ({ w })) });
+  });
+  let cur = null;
+  small.forEach(([job, ws]) => {
+    if (!cur || cur.rows.length + ws.length + 1 > ROWS_PER_PAGE) { cur = { jobs: [], part: 1, parts: 1, rows: [] }; sheets.push(cur); }
+    cur.jobs.push(job); cur.rows.push({ band: job }); ws.forEach(w => cur.rows.push({ w }));
+  });
+  return sheets;
+}
+function sheetHtml(site, typeLabel, sheets, month, year) {
+  const monthName = new Date(year, month - 1, 1).toLocaleDateString("ar-EG", { month: "long", year: "numeric" });
+  return sheets.map((s, p) => {
+    let rows = "", n = 0, count = 0;
+    for (let r = 0; r < ROWS_PER_PAGE; r++) {
+      const it = s.rows[r];
+      if (it?.band) rows += `<tr class="band"><td colspan="6">${esc(it.band)}</td></tr>`;
+      else if (it) { n++; count++; rows += `<tr><td class="n">${n}</td><td class="nm">${esc(it.w.name)}</td><td class="nid">${esc(it.w.nid)}</td><td class="sig"></td><td class="sig"></td><td></td></tr>`; }
+      else rows += `<tr><td class="n"></td><td></td><td></td><td class="sig"></td><td class="sig"></td><td></td></tr>`;
+    }
+    const jobLabel = s.jobs.length > 1 ? "الوظائف" : "الوظيفة";
+    const part = s.parts > 1 ? ` (${s.part} من ${s.parts})` : "";
+    return `<section class="page">
+      <div class="head"><div><div class="title">كشف حضور ${esc(site)} — ${typeLabel}</div>
+        <div class="meta">${jobLabel}: <b>${esc(s.jobs.join("، "))}</b>${part}</div><div class="meta">شهر <b>${monthName}</b></div></div>
+        <div class="pagebox"><small>صفحة</small><span>${p + 1} / ${sheets.length}</span></div></div>
+      <div class="datebar">التاريخ: <span dir="ltr" class="fixed"><span class="slot"></span> / ${month} / ${year}</span><span style="margin-inline-start:auto">اليوم: <span class="slot" style="width:28mm"></span></span></div>
+      <table><colgroup><col style="width:5%"><col style="width:34%"><col style="width:18%"><col style="width:10%"><col style="width:10%"><col style="width:23%"></colgroup>
+        <thead><tr><th>م</th><th>الاسم</th><th>الرقم القومي</th><th class="sig">حضور</th><th class="sig">انصراف</th><th>ملاحظات</th></tr></thead><tbody>${rows}</tbody></table>
+      <div class="foot"><div class="counts"><div class="count-box">عدد الصفحة <b>${count}</b></div><div class="count-box">العدد الفعلي <span class="blank"></span></div></div>
+        <div class="sigs"><div>توقيع المشرف<span></span></div><div>توقيع الأمن<span></span></div><div>توقيع مسئول الإدارة<span></span></div></div>
+        <div class="rule">الغائب: خط أفقي واحد مستقيم يعدّي على خانتي الحضور والانصراف مع بعض. الحاضر: ساعته تُكتب في صفه، ممنوع علامات التكرار (،، أو الخط المتعرج). اسم البديل في الملاحظات.</div></div>
+    </section>`;
+  }).join("");
+}
+$("print").addEventListener("click", () => {
+  if (!S.roster.length) return show($("deadline"), "err", "كشف الموقع مش موجود لسه.");
+  const [year, month] = (S.date || ymd(new Date())).split("-").map(Number);
+  const basic = S.roster.filter(w => w.type !== "موسمي"), seasonal = S.roster.filter(w => w.type === "موسمي");
+  let body = "";
+  if (basic.length) body += sheetHtml(S.site, "أساسي", buildSheets(basic), month, year);
+  if (seasonal.length) body += sheetHtml(S.site, "موسمي", buildSheets(seasonal), month, year);
+  const win = window.open("", "_blank");
+  if (!win) return show($("deadline"), "err", "المتصفح منع فتح صفحة الطباعة — اسمح بالنوافذ المنبثقة للموقع ده.");
+  win.document.write(`<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>كشف حضور ${esc(S.site)}</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600&display=swap">
+<style>
+*{box-sizing:border-box;}body{margin:0;background:#ddd;font-family:"IBM Plex Sans Arabic","Segoe UI",Tahoma,sans-serif;color:#000;}
+.page{width:210mm;height:297mm;background:#fff;margin:10px auto;padding:14mm 14mm 12mm;display:flex;flex-direction:column;overflow:hidden;}
+.head{display:flex;justify-content:space-between;align-items:center;gap:4mm;}
+.title{font-size:15pt;font-weight:600;}.meta{font-size:11pt;line-height:1.6;}
+.pagebox{border:2px solid #000;width:24mm;height:20mm;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.1;}
+.pagebox small{font-size:9pt;}.pagebox span{font-size:20pt;font-weight:600;direction:ltr;}
+.datebar{margin-top:3mm;border:2px solid #000;padding:2mm 4mm;display:flex;align-items:center;gap:4mm;font-size:12pt;}
+.datebar .slot{display:inline-block;width:14mm;border-bottom:1.5px solid #000;height:7mm;}.fixed{font-weight:600;}
+table{width:100%;border-collapse:collapse;table-layout:fixed;margin-top:3mm;}
+th{font-size:10pt;font-weight:600;height:8mm;border:1.2px solid #000;}
+td{height:7mm;border:0.8px solid #000;font-size:10.5pt;padding:0 1mm;white-space:nowrap;overflow:hidden;}
+td.n,td.nid{text-align:center;font-variant-numeric:tabular-nums;}td.n{font-size:9pt;}td.nid{font-size:9.5pt;}
+th.sig,td.sig{border-left:2px solid #000;border-right:2px solid #000;}
+tr.band td{background:#000;color:#fff;font-weight:600;font-size:10pt;text-align:center;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+.foot{margin-top:auto;padding-top:3mm;}.counts{display:flex;gap:6mm;font-size:11pt;}
+.count-box{border:1.5px solid #000;padding:1.5mm 4mm;display:flex;gap:3mm;align-items:center;}
+.count-box .blank{display:inline-block;width:14mm;border-bottom:1px solid #000;height:5mm;}
+.sigs{display:grid;grid-template-columns:repeat(3,1fr);gap:6mm;margin-top:3mm;font-size:10.5pt;}
+.sigs div{display:flex;flex-direction:column;gap:1mm;}.sigs span{display:block;height:8mm;border-bottom:1px solid #000;}
+.rule{margin-top:2mm;font-size:9pt;color:#444;}
+@page{size:A4 portrait;margin:0;}@media print{body{background:#fff;}.page{margin:0;break-after:page;}}
+</style></head><body>${body}</body></html>`);
+  win.document.close();
+  const fit = () => win.document.querySelectorAll("td.nm").forEach(td => {
+    let size = 10.5; td.style.fontSize = size + "pt";
+    while (td.scrollWidth > td.clientWidth && size > 6.5) { size -= 0.25; td.style.fontSize = size + "pt"; }
+  });
+  const go = () => { fit(); setTimeout(() => win.print(), 300); };
+  (win.document.fonts?.ready || Promise.resolve()).then(go);
 });
 </script>
 </body>

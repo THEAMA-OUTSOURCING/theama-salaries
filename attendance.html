@@ -97,11 +97,20 @@ h2{font-size:15px;font-weight:600;margin-bottom:8px;}
 
     <div class="card" id="upload-card">
       <h2>صور الكشف</h2>
-      <label class="upl" for="file">
-        <i class="ti ti-camera-plus"></i>
-        <b>صوّر صفحات الكشف</b>
-        <span class="muted">كل صفحة صورة. ممكن تختار أكتر من صورة مرة واحدة، وبأي ترتيب.</span>
-      </label>
+      <div class="row" style="align-items:stretch;">
+        <label class="upl grow" for="cam">
+          <i class="ti ti-camera"></i>
+          <b>صوّر بالكاميرا</b>
+          <span class="muted">صفحة صفحة</span>
+        </label>
+        <label class="upl grow" for="file">
+          <i class="ti ti-photo"></i>
+          <b>اختار من المعرض</b>
+          <span class="muted">ممكن كذا صورة مرة واحدة</span>
+        </label>
+      </div>
+      <p class="muted" style="margin-top:8px;">كل صفحة صورة لوحدها، وبأي ترتيب. صوّر الورقة كلها من فوق، في نور كويس.</p>
+      <input type="file" id="cam" accept="image/*" capture="environment" class="hidden">
       <input type="file" id="file" accept="image/*" multiple class="hidden">
       <div class="msg" id="up-msg"></div>
       <div class="pages" id="pages"></div>
@@ -240,7 +249,7 @@ async function compress(file) {
   }
   throw new Error("الصورة كبيرة جداً");
 }
-$("file").addEventListener("change", async e => {
+async function onFiles(e) {
   const files = [...e.target.files]; e.target.value = "";
   if (!files.length) return;
   if (S.day?.status === "approved") return show($("up-msg"), "err", "اليوم ده اتعتمد، مينفعش يترفعله صور.");
@@ -261,7 +270,9 @@ $("file").addEventListener("change", async e => {
     }
   }
   show($("up-msg"), "ok", `اترفع ${fmt(ok)} صورة. القراءة بتاخد حوالي دقيقة لكل صورة، والنتيجة هتظهر لوحدها.`);
-});
+}
+$("file").addEventListener("change", onFiles);
+$("cam").addEventListener("change", onFiles);
 $("pages").addEventListener("click", async e => {
   const del = e.target.closest("[data-del]");
   if (del) {

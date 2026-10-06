@@ -112,9 +112,10 @@ td.n,th.n{text-align:center;font-variant-numeric:tabular-nums;}
     <div class="tabs" role="tablist">
       <button class="tab" role="tab" data-tab="dash" aria-selected="true">الداشبورد</button>
       <button class="tab" role="tab" data-tab="amend" aria-selected="false">تعديلات الشهر</button>
-      <button class="tab" role="tab" data-tab="upload" aria-selected="false">رفع شيت الاحتياج</button>
-      <button class="tab" role="tab" data-tab="counts" aria-selected="false">الأعداد من الرواتب</button>
-      <button class="tab" role="tab" data-tab="settings" aria-selected="false">الإعدادات</button>
+      <button class="tab admin-only" role="tab" data-tab="upload" aria-selected="false">رفع شيت الاحتياج</button>
+      <button class="tab admin-only" role="tab" data-tab="counts" aria-selected="false">الأعداد من الرواتب</button>
+      <button class="tab admin-only" role="tab" data-tab="settings" aria-selected="false">الإعدادات</button>
+      <button class="tab admin-only" role="tab" data-tab="accounts" aria-selected="false">الحسابات</button>
     </div>
 
     <!-- الداشبورد -->
@@ -152,7 +153,7 @@ td.n,th.n{text-align:center;font-variant-numeric:tabular-nums;}
 
     <!-- التعديلات -->
     <section data-panel="amend" class="hidden">
-      <div class="card">
+      <div class="card admin-only">
         <h2>تعديل عدد في نص الشهر</h2>
         <p class="muted" style="margin-bottom:10px;">التعديل بيتسجل في سجل ثابت ومش بيتمسح. لو فيه غلط، اعمل تعديل جديد بالرقم الصح واكتب في السبب "تصحيح".</p>
         <div class="grid-form">
@@ -203,6 +204,36 @@ td.n,th.n{text-align:center;font-variant-numeric:tabular-nums;}
       </div>
     </section>
 
+    <!-- الحسابات -->
+    <section data-panel="accounts" class="hidden">
+      <div class="msg warn" id="ac-server"></div>
+      <div class="card">
+        <h2>حسابات المواقع والإدارة</h2>
+        <p class="muted" style="margin-bottom:10px;">الحسابات اللي في التصميم. دوس "إنشاء" للي لسه مااتعملش، والسيرفر هيعمله بباسورد مؤقت يظهرلك مرة واحدة.</p>
+        <div class="tbl"><table><thead><tr><th>الإيميل</th><th>الحساب</th><th>الدور</th><th>المواقع</th><th>الحالة</th><th></th></tr></thead><tbody id="ac-plan"></tbody></table></div>
+      </div>
+      <div class="card">
+        <h2>حساب جديد أو تعديل حساب</h2>
+        <div class="grid-form">
+          <label>الإيميل<input type="email" id="ac-email" placeholder="dmn@theama-egy.com" dir="ltr"></label>
+          <label>الدور<select id="ac-role"><option value="supervisor">مشرف / إقليمي</option><option value="hr">HR</option><option value="accountant">محاسب</option></select></label>
+          <label class="wide">المواقع (للمشرف بس — من غير مواقع = الحساب المشترك)<span id="ac-sites" class="row" style="gap:12px;color:#222;"></span></label>
+          <label class="row" style="flex-direction:row;gap:6px;color:#222;"><input type="checkbox" id="ac-disabled"> الحساب متوقف</label>
+          <div><button class="btn" id="ac-save">حفظ</button></div>
+        </div>
+        <div class="msg" id="ac-msg"></div>
+        <div id="ac-secret" class="hidden" style="margin-top:10px;padding:12px;border:1px dashed #c0392b;border-radius:8px;">
+          <div class="muted">الباسورد المؤقت (اتمسح من السيستم بعد 10 دقايق، انسخه وابعته لصاحب الحساب):</div>
+          <div class="row" style="margin-top:6px;"><code id="ac-secret-val" style="font-size:20px;letter-spacing:1px;direction:ltr;"></code><button class="btn sec small" id="ac-copy">نسخ</button></div>
+        </div>
+      </div>
+      <div class="card">
+        <h2>كل الحسابات الموجودة</h2>
+        <div class="tbl"><table><thead><tr><th>الإيميل</th><th>الدور</th><th>المواقع</th><th>الحالة</th><th></th></tr></thead><tbody id="ac-list"></tbody></table></div>
+        <p class="muted" id="ac-updated" style="margin-top:8px;"></p>
+      </div>
+    </section>
+
     <!-- الإعدادات -->
     <section data-panel="settings" class="hidden">
       <div class="msg warn" id="s-empty"></div>
@@ -236,7 +267,7 @@ td.n,th.n{text-align:center;font-variant-numeric:tabular-nums;}
 
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-import { getFirestore, collection, getDocs, addDoc, doc, query, where, setDoc, getDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { getFirestore, collection, getDocs, addDoc, doc, query, where, setDoc, getDoc, serverTimestamp, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 
 const firebaseConfig = {
@@ -314,10 +345,13 @@ onAuthStateChanged(auth, async user => {
   if (!user) { $("login").classList.remove("hidden"); return; }
   let role = null;
   try { role = (await user.getIdTokenResult()).claims.role || null; } catch (e) {}
-  if (role !== "admin") { $("denied").classList.remove("hidden"); return; }
-  $("who").textContent = user.email || "";
+  if (!["admin", "hr", "accountant"].includes(role)) { $("denied").classList.remove("hidden"); return; }
+  S.role = role;
+  document.querySelectorAll(".admin-only").forEach(el => el.classList.toggle("hidden", role !== "admin"));
+  $("who").textContent = (user.email || "") + " — " + ({ admin: "أدمن", hr: "HR", accountant: "محاسب" }[role]);
   $("app").classList.remove("hidden");
   await loadAll();
+  if (role === "admin") initAccounts();
 });
 
 // ===== التبويبات =====
@@ -728,6 +762,113 @@ $("s-save").addEventListener("click", async () => {
     renderSettings(); renderDash();
   } catch (err) { show(msg, "err", "ماتحفظتش: " + err.message); }
 });
+// ===== الحسابات (أدمن بس — التنفيذ على السيرفر worker.py) =====
+const ATT_SITES = ["فرع العامرية", "فرع العجمى", "مصنع العامرية", "دمنهور", "كفر الدوار", "المنصورة", "فرع طنطا", "طنطا مصنع"];
+const PLANNED = [
+  { email: "dmn@theama-egy.com", label: "دمنهور", role: "supervisor", sites: ["دمنهور"] },
+  { email: "kd@theama-egy.com", label: "كفر الدوار", role: "supervisor", sites: ["كفر الدوار"] },
+  { email: "amb@theama-egy.com", label: "فرع العامرية + العجمي", role: "supervisor", sites: ["فرع العامرية", "فرع العجمى"] },
+  { email: "amp@theama-egy.com", label: "مصنع العامرية", role: "supervisor", sites: ["مصنع العامرية"] },
+  { email: "mns@theama-egy.com", label: "المنصورة", role: "supervisor", sites: ["المنصورة"] },
+  { email: "tnb@theama-egy.com", label: "فرع طنطا", role: "supervisor", sites: ["فرع طنطا"] },
+  { email: "tnp@theama-egy.com", label: "طنطا مصنع", role: "supervisor", sites: ["طنطا مصنع"] },
+  { email: "rbh@theama-egy.com", label: "إقليمي البحيرة", role: "supervisor", sites: ["كفر الدوار", "دمنهور"] },
+  { email: "ralx@theama-egy.com", label: "إقليمي إسكندرية", role: "supervisor", sites: ["فرع العامرية", "فرع العجمى", "مصنع العامرية"] },
+  { email: "rdlt@theama-egy.com", label: "إقليمي الدلتا", role: "supervisor", sites: ["فرع طنطا", "طنطا مصنع", "المنصورة"] },
+  { email: "emad.seif@theama-egy.com", label: "HR", role: "hr", sites: [] },
+  { email: "mohamed.abdallah@theama-egy.com", label: "المحاسب", role: "accountant", sites: [] },
+  { email: "supervisor@theama-egy.com", label: "الحساب المشترك", role: "supervisor", sites: [] }
+];
+const ROLE_AR = { admin: "أدمن", supervisor: "مشرف", hr: "HR", accountant: "محاسب" };
+let STAFF = [];
+
+async function createTask(type, extra) {
+  const u = auth.currentUser;
+  if (!u) throw new Error("انتهت الجلسة — ادخل تاني");
+  return await addDoc(collection(db, "admin_tasks"), {
+    type, requested_by: u.uid, requested_email: u.email || "", status: "pending", created_at: serverTimestamp(), ...extra
+  });
+}
+function waitTask(ref, timeoutMs) {
+  return new Promise(resolve => {
+    let done = false, unsub = null;
+    const finish = r => { if (done) return; done = true; clearTimeout(timer); if (unsub) unsub(); resolve(r); };
+    const timer = setTimeout(() => finish({ status: "timeout" }), timeoutMs);
+    unsub = onSnapshot(ref, snap => { const d = snap.data(); if (d && (d.status === "done" || d.status === "error")) finish(d); },
+      err => finish({ status: "error", message: "مش قادر أتابع الطلب: " + err.message }));
+  });
+}
+
+function initAccounts() {
+  $("ac-sites").innerHTML = ATT_SITES.map(s => `<label class="row" style="flex-direction:row;gap:4px;font-size:13px;color:#222;"><input type="checkbox" value="${esc(s)}"> ${esc(s)}</label>`).join("");
+  $("ac-role").addEventListener("change", () => { $("ac-sites").style.opacity = $("ac-role").value === "supervisor" ? 1 : .4; });
+  onSnapshot(doc(db, "staff_accounts", "all"), snap => {
+    const d = snap.exists() ? snap.data() : null;
+    STAFF = d?.accounts || [];
+    $("ac-updated").textContent = d?.updated_at?.toDate ? "آخر تحديث للقايمة: " + d.updated_at.toDate().toLocaleString("ar-EG") : "القايمة لسه ماتعملتش — هتظهر أول ما السيرفر يشتغل بالنسخة الجديدة.";
+    renderAccounts();
+  }, err => show($("ac-server"), "warn", "مش قادر أقرا قايمة الحسابات: " + err.message));
+  onSnapshot(doc(db, "admin_tasks_status", "server"), snap => {
+    const t = snap.exists() && snap.data().last_seen?.toDate ? snap.data().last_seen.toDate() : null;
+    const ok = t && (Date.now() - t.getTime()) / 60000 <= 11;
+    if (ok) hide($("ac-server")); else show($("ac-server"), "warn", "السيرفر واقف — الطلبات هتستنى لحد ما يشتغل.");
+  });
+}
+function sitesText(a) { return a.role === "supervisor" ? ((a.sites || []).join("، ") || "الكل ما عدا مواقع الحضور") : "—"; }
+function renderAccounts() {
+  const by = Object.fromEntries(STAFF.map(a => [String(a.email).toLowerCase(), a]));
+  $("ac-plan").innerHTML = PLANNED.map(p => {
+    const a = by[p.email];
+    const same = a && a.role === p.role && JSON.stringify([...(a.sites || [])].sort()) === JSON.stringify([...p.sites].sort());
+    const st = !a ? `<span class="c-s">لسه مااتعملش</span>` : !same ? `<span class="c-s">الصلاحيات مختلفة</span>` : a.disabled ? `<span class="muted">متوقف</span>` : `<span class="c-k">جاهز</span>`;
+    const btn = !a ? `<button class="btn small" data-plan="${esc(p.email)}">إنشاء</button>` : !same ? `<button class="btn sec small" data-plan="${esc(p.email)}">تظبيط الصلاحيات</button>` : "";
+    return `<tr><td dir="ltr" style="text-align:right">${esc(p.email)}</td><td>${esc(p.label)}</td><td>${ROLE_AR[p.role]}</td><td>${esc(sitesText(p))}</td><td>${st}</td><td>${btn}</td></tr>`;
+  }).join("");
+  $("ac-list").innerHTML = STAFF.length ? STAFF.map(a => `<tr><td dir="ltr" style="text-align:right">${esc(a.email)}</td><td>${ROLE_AR[a.role] || esc(a.role || "—")}</td><td>${esc(sitesText(a))}</td><td>${a.disabled ? "متوقف" : "شغال"}</td>
+    <td class="row" style="gap:4px;">${a.role === "admin" ? "" : `<button class="btn sec small" data-edit="${esc(a.email)}">تعديل</button><button class="btn sec small" data-pass="${esc(a.email)}">باسورد جديد</button>`}</td></tr>`).join("")
+    : `<tr><td colspan="5" class="muted">مفيش حسابات ظاهرة لسه.</td></tr>`;
+}
+function fillForm(a) {
+  $("ac-email").value = a.email; $("ac-role").value = a.role in ROLE_AR && a.role !== "admin" ? a.role : "supervisor";
+  $("ac-sites").querySelectorAll("input").forEach(i => i.checked = (a.sites || []).includes(i.value));
+  $("ac-disabled").checked = !!a.disabled;
+  $("ac-role").dispatchEvent(new Event("change"));
+  $("ac-email").scrollIntoView({ behavior: "smooth", block: "center" });
+}
+document.querySelector('[data-panel="accounts"]').addEventListener("click", async e => {
+  const t = e.target;
+  if (t.dataset.plan) { const p = PLANNED.find(x => x.email === t.dataset.plan); fillForm({ ...p, disabled: false }); return saveAccount(); }
+  if (t.dataset.edit) { const a = STAFF.find(x => x.email === t.dataset.edit); if (a) fillForm(a); return; }
+  if (t.dataset.pass) {
+    if (!confirm(`باسورد مؤقت جديد لـ ${t.dataset.pass}؟ الباسورد القديم هيبطل، وأي حد داخل بيه هيخرج.`)) return;
+    return runAccountTask("account_password", { email: t.dataset.pass });
+  }
+});
+$("ac-save").addEventListener("click", () => saveAccount());
+$("ac-copy").addEventListener("click", () => navigator.clipboard?.writeText($("ac-secret-val").textContent));
+function saveAccount() {
+  const email = $("ac-email").value.trim().toLowerCase(), role = $("ac-role").value;
+  const sites = role === "supervisor" ? [...$("ac-sites").querySelectorAll("input:checked")].map(i => i.value) : [];
+  if (!email || !email.includes("@")) return show($("ac-msg"), "err", "اكتب الإيميل.");
+  if (role === "supervisor" && !sites.length && email !== "supervisor@theama-egy.com"
+      && !confirm("مشرف من غير مواقع = نفس صلاحيات الحساب المشترك (كل العمال ما عدا مواقع الحضور). متأكد؟")) return;
+  return runAccountTask("account_save", { email, role, sites, disabled: $("ac-disabled").checked });
+}
+async function runAccountTask(type, extra) {
+  const msg = $("ac-msg"); $("ac-secret").classList.add("hidden");
+  show(msg, "info", "جاري إرسال الطلب للسيرفر...");
+  document.querySelectorAll('[data-panel="accounts"] button').forEach(b => b.disabled = true);
+  try {
+    const ref = await createTask(type, extra);
+    const r = await waitTask(ref, 60000);
+    if (r.status === "done") {
+      show(msg, "ok", r.message);
+      if (r.secret) { $("ac-secret-val").textContent = r.secret; $("ac-secret").classList.remove("hidden"); }
+    } else if (r.status === "timeout") show(msg, "warn", "الطلب اتسجّل بس السيرفر مردّش لسه — هيتنفذ أول ما يشتغل، وارجع للصفحة دي تشوف النتيجة.");
+    else show(msg, "err", r.message || "حصل خطأ، حاول تاني");
+  } catch (err) { show(msg, "err", err.code === "permission-denied" ? "مش مسموح — اتأكد إن الـ Rules الجديدة اتنشرت." : "خطأ: " + err.message); }
+  document.querySelectorAll('[data-panel="accounts"] button').forEach(b => b.disabled = false);
+}
 </script>
 </body>
 </html>

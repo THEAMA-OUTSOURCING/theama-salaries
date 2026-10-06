@@ -217,6 +217,9 @@ input[type=file]{width:100%;padding:8px;cursor:pointer;font-size:13px;border:1px
   </div>
   <div id="admin-upload-box" style="display:none;">
     <div id="server-status" class="info-box" style="margin-bottom:12px;">جاري التحقق من حالة السيرفر...</div>
+    <div class="card office-only" style="display:none;">
+      <a href="plan.html" style="display:flex;align-items:center;gap:8px;font-size:14px;font-weight:500;color:#222;text-decoration:none;"><i class="ti ti-chart-bar" style="font-size:18px;color:#c0392b;"></i>الاحتياج والأعداد والحسابات<i class="ti ti-chevron-left" style="margin-right:auto;color:#aaa;"></i></a>
+    </div>
     <div style="text-align:left;margin-bottom:10px;"><a href="#" onclick="adminLogout();return false;" style="font-size:13px;color:#c0392b;text-decoration:none;"><i class="ti ti-logout" style="font-size:15px;vertical-align:-2px;margin-left:4px;"></i>خروج الإدارة</a></div>
     <div class="card admin-only">
       <p style="font-size:14px;font-weight:500;color:#222;margin-bottom:12px;"><i class="ti ti-upload" style="font-size:16px;vertical-align:-2px;margin-left:6px;color:#c0392b;"></i>رفع شيت الرواتب الجديد</p>
@@ -228,7 +231,7 @@ input[type=file]{width:100%;padding:8px;cursor:pointer;font-size:13px;border:1px
       <div id="sync-status" style="display:none;margin-top:10px;margin-bottom:0;"></div>
       <button class="btn-danger" onclick="confirmClear()"><i class="ti ti-trash" style="font-size:15px;vertical-align:-2px;margin-left:4px;"></i>مسح كل البيانات القديمة</button>
     </div>
-    <div class="card" style="margin-top:0;">
+    <div class="card staff-only" style="margin-top:0;">
       <p style="font-size:14px;font-weight:500;color:#222;margin-bottom:12px;"><i class="ti ti-heart-plus" style="font-size:16px;vertical-align:-2px;margin-left:6px;color:#185fa5;"></i>بحث عن كارنيه طبي</p>
       <div style="margin-bottom:12px;">
         <label style="font-size:13px;color:#888;display:block;margin-bottom:6px;">كود الموظف</label>
@@ -245,7 +248,7 @@ input[type=file]{width:100%;padding:8px;cursor:pointer;font-size:13px;border:1px
         </div>
       </div>
     </div>
-    <div class="card" style="margin-top:0;">
+    <div class="card staff-only" style="margin-top:0;">
       <p style="font-size:14px;font-weight:500;color:#222;margin-bottom:12px;"><i class="ti ti-lock-open" style="font-size:16px;vertical-align:-2px;margin-left:6px;color:#ba7517;"></i>إعادة تعيين باسورد موظف</p>
       <div style="margin-bottom:12px;">
         <label style="font-size:13px;color:#888;display:block;margin-bottom:6px;">كود الموظف</label>
@@ -493,8 +496,16 @@ onAuthStateChanged(auth, async (user)=>{
   if(user){
     // إدارة أو مشرف
     const isAdmin = (role === 'admin');
+    const isStaffRole = (role === 'admin' || role === 'supervisor');
+    const isOfficeRole = (role === 'admin' || role === 'hr' || role === 'accountant');
     document.querySelectorAll('.admin-only').forEach(el=>{
       el.style.display = isAdmin ? '' : 'none';
+    });
+    document.querySelectorAll('.staff-only').forEach(el=>{
+      el.style.display = isStaffRole ? '' : 'none';
+    });
+    document.querySelectorAll('.office-only').forEach(el=>{
+      el.style.display = isOfficeRole ? '' : 'none';
     });
     loginBox.style.display='none';
     uploadBox.style.display='block';
@@ -623,7 +634,7 @@ async function resetEmployeePass(){
     } else {
       fail(r.message || 'حصل خطأ، حاول تاني');
     }
-  }catch(e){ fail('خطأ: '+e.message); }
+  }catch(e){ fail(e && e.code==='permission-denied' ? 'الموظف ده مش ضمن العمال المسموحلك بيهم' : 'خطأ: '+e.message); }
   btn.innerHTML='<i class="ti ti-refresh" style="font-size:15px;vertical-align:-2px;margin-left:4px;"></i>إعادة تعيين الباسورد'; btn.disabled=false;
 }
 window.resetEmployeePass = resetEmployeePass;
@@ -1156,7 +1167,7 @@ async function searchMedicalCard(){
     result.style.display = 'block';
   }catch(e){
     loading.style.display = 'none';
-    document.getElementById('search-card-error-msg').textContent = 'حصل خطأ أثناء التحميل، حاول تاني';
+    document.getElementById('search-card-error-msg').textContent = (e && e.code==='permission-denied') ? 'الكارنيه ده لعامل مش ضمن العمال المسموحلك بيهم' : 'حصل خطأ أثناء التحميل، حاول تاني';
     errEl.style.display = 'block';
     console.error('search card error:', e);
   }

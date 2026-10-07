@@ -404,15 +404,36 @@ $("pages").addEventListener("click", async e => {
 $("viewer").addEventListener("click", () => $("viewer").classList.add("hidden"));
 
 // ===== العرض =====
+// صف مكتوب بخط اليد: هل هو عامل موجود في الكشف؟ (بالرقم القومي أو بالاسم)
+function matchExtra(x) {
+  const nid = String(x.nid || "").replace(/\D/g, "");
+  if (nid.length >= 10) {
+    const hits = S.roster.filter(w => w.nid && w.nid.length === 14 && nid.length === 14
+      ? [...w.nid].filter((c, i) => c !== nid[i]).length <= 2
+      : w.nid && w.nid.endsWith(nid.slice(-6)));
+    if (hits.length === 1) return hits[0];
+  }
+  if (x.name) {
+    const sc = S.roster.map(w => ({ w, s: nameScore(x.name, w.name) })).sort((a, b) => b.s - a.s);
+    if (sc[0] && sc[0].s >= 0.85 && (!sc[1] || sc[0].s - sc[1].s >= 0.1)) return sc[0].w;
+  }
+  return null;
+}
 function aiState() {
   // آخر قراءة لكل عامل من الصور اللي خلصت
   const map = {};
   S.pages.filter(p => p.status === "done").forEach(p => {
     (p.result?.rows || []).forEach(r => { if (r.code) map[r.code] = { ...r, page: p.id }; });
   });
+  S.pages.filter(p => p.status === "done").forEach(p => {
+    (p.result?.extra || []).forEach(x => {
+      const w = matchExtra(x);
+      if (w && !map[w.code]) map[w.code] = { s: "P", conf: "M", match: "handwritten", note: x.note || "", code: w.code, page: p.id };
+    });
+  });
   return map;
 }
-function needsReview(r) { return !r || r.s === "U" || r.conf === "L" || r.match === "fuzzy"; }
+function needsReview(r) { return !r || r.s === "U" || r.conf === "L" || r.match === "fuzzy" || r.match === "handwritten"; }
 
 function render() {
   const busy = S.pages.filter(p => p.status === "pending" || p.status === "reading").length;
@@ -452,6 +473,7 @@ function render() {
     const why = !r ? "مش موجود في أي صورة"
       : r.s === "U" ? "القراءة مش واضحة"
       : r.match === "fuzzy" ? "الرقم القومي اتقرا بفرق بسيط"
+      : r.match === "handwritten" ? "اتكتب بخط اليد تحت الكشف — اتأكد"
       : r.conf === "L" ? "القراءة مش أكيدة" : "";
     const aiTxt = r ? (r.s === "P" ? "قرا: حاضر" : r.s === "A" ? `قرا: غايب${r.word ? " (" + esc(r.word) + ")" : ""}` : "قرا: مش واضح") : "";
     const note = r?.note ? ` — ملاحظة: ${esc(r.note)}` : "";
@@ -484,7 +506,7 @@ function render() {
   const loose = [];
   S.pages.filter(p => p.status === "done").forEach(p => {
     (p.result?.rows || []).filter(r => !r.code).forEach(r => loose.push(`صف ${esc(r.n)}: رقم قومي ${esc(r.nid || "مش مقروء")} — ${r.s === "P" ? "حاضر" : r.s === "A" ? "غايب" : "مش واضح"}`));
-    (p.result?.extra || []).forEach(x => loose.push(`بخط اليد: ${esc(x.name || "اسم مش مقروء")}${x.nid ? " — " + esc(x.nid) : ""}${x.note ? " — " + esc(x.note) : ""} <button class="btn sec small" data-addnew="1">إضافة بالبطاقة</button>`));
+    (p.result?.extra || []).filter(x => !matchExtra(x)).forEach(x => loose.push(`بخط اليد: ${esc(x.name || "اسم مش مقروء")}${x.nid ? " — " + esc(x.nid) : ""}${x.note ? " — " + esc(x.note) : ""} <button class="btn sec small" data-addnew="1">إضافة بالبطاقة</button>`));
   });
   $("extra-card").classList.toggle("hidden", !loose.length);
   $("extras").innerHTML = loose.map(t => `<div class="muted" style="padding:4px 0;border-bottom:1px solid #f0efe9;">${t}</div>`).join("");

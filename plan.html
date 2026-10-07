@@ -116,6 +116,7 @@ td.n,th.n{text-align:center;font-variant-numeric:tabular-nums;}
       <button class="tab admin-only" role="tab" data-tab="counts" aria-selected="false">الأعداد من الرواتب</button>
       <button class="tab admin-only" role="tab" data-tab="settings" aria-selected="false">الإعدادات</button>
       <button class="tab admin-only" role="tab" data-tab="accounts" aria-selected="false">الحسابات</button>
+      <button class="tab" role="tab" data-tab="workers" aria-selected="false">بيانات العمال</button>
     </div>
 
     <!-- الداشبورد -->
@@ -204,6 +205,47 @@ td.n,th.n{text-align:center;font-variant-numeric:tabular-nums;}
       </div>
     </section>
 
+    <!-- بيانات العمال -->
+    <section data-panel="workers" class="hidden">
+      <div class="card">
+        <h2>بيانات العمال في مواقع الحضور</h2>
+        <p class="muted" style="margin-bottom:10px;">أي تعديل هنا بيسري على كشف الموقع خلال ثواني، من غير ما تستنى شيت الرواتب. ولما شيت الرواتب الجديد يبقى فيه نفس التعديل، التعديل اليدوي بيتشال لوحده.</p>
+        <div class="row">
+          <input type="text" id="w-q" placeholder="ابحث بالاسم أو الكود أو الرقم القومي" style="flex:1 1 260px;">
+          <select id="w-site"><option value="">كل المواقع</option></select>
+        </div>
+        <div class="tbl" style="margin-top:10px;"><table><thead><tr><th>الاسم</th><th>الكود</th><th>الموقع</th><th>النوع</th><th>الوظيفة</th><th></th></tr></thead><tbody id="w-list"></tbody></table></div>
+        <p class="muted" id="w-count" style="margin-top:6px;"></p>
+      </div>
+      <div class="card hidden" id="w-form">
+        <h2 id="w-title"></h2>
+        <div class="grid-form">
+          <label>النوع<select id="w-type"><option value="اساسي">أساسي</option><option value="موسمي">موسمي</option><option value="يومية">يومية</option><option value="مشي">مشي</option></select></label>
+          <label>الوظيفة<input type="text" id="w-job" list="w-jobs"></label>
+          <label>الموقع<select id="w-site2"></select></label>
+          <label>ساري من<input type="date" id="w-from"></label>
+          <label class="wide">ملاحظة (اختياري)<input type="text" id="w-note"></label>
+          <div class="row"><button class="btn" id="w-save">حفظ التعديل</button><button class="btn sec" id="w-cancel">إلغاء</button></div>
+        </div>
+        <datalist id="w-jobs"></datalist>
+        <div class="msg" id="w-msg"></div>
+      </div>
+      <div class="card">
+        <h2>التعديلات اللي لسه مش في شيت الرواتب</h2>
+        <div class="tbl"><table><thead><tr><th>الاسم</th><th>الكود</th><th>التعديل</th><th>ساري من</th><th>بواسطة</th><th></th></tr></thead><tbody id="w-ovr"></tbody></table></div>
+      </div>
+      <div class="card">
+        <h2>رفع تعديلات كتير من إكسيل</h2>
+        <p class="muted" style="margin-bottom:8px;">شيت فيه عمود <b>الكود</b>، ومعاه عمود أو أكتر من: <b>النوع</b> (أساسي / موسمي / يومية / مشي)، <b>الوظيفة</b>، <b>الموقع</b>، <b>ساري من</b>، <b>ملاحظة</b>. هتشوف المقارنة قبل الحفظ.</p>
+        <input type="file" id="w-file" accept=".xlsx,.xls">
+        <div class="msg" id="w-up-msg"></div>
+        <div class="hidden" id="w-preview">
+          <div class="tbl" style="margin-top:10px;"><table><thead><tr><th>الكود</th><th>الاسم</th><th>دلوقتي</th><th>الجديد</th><th></th></tr></thead><tbody id="w-prev-list"></tbody></table></div>
+          <div class="row" style="margin-top:10px;"><button class="btn" id="w-apply">حفظ التعديلات</button><button class="btn sec" id="w-discard">إلغاء</button></div>
+        </div>
+      </div>
+    </section>
+
     <!-- الحسابات -->
     <section data-panel="accounts" class="hidden">
       <div class="msg warn" id="ac-server"></div>
@@ -267,7 +309,7 @@ td.n,th.n{text-align:center;font-variant-numeric:tabular-nums;}
 
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-import { getFirestore, collection, getDocs, addDoc, doc, query, where, setDoc, getDoc, serverTimestamp, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { getFirestore, collection, getDocs, addDoc, doc, query, where, setDoc, getDoc, deleteDoc, writeBatch, serverTimestamp, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 
 const firebaseConfig = {
@@ -352,6 +394,7 @@ onAuthStateChanged(auth, async user => {
   $("app").classList.remove("hidden");
   await loadAll();
   if (role === "admin") initAccounts();
+  initWorkers();
 });
 
 // ===== التبويبات =====
@@ -869,6 +912,137 @@ async function runAccountTask(type, extra) {
   } catch (err) { show(msg, "err", err.code === "permission-denied" ? "مش مسموح — اتأكد إن الـ Rules الجديدة اتنشرت." : "خطأ: " + err.message); }
   document.querySelectorAll('[data-panel="accounts"] button').forEach(b => b.disabled = false);
 }
+// ===== بيانات العمال (الأدمن وHR والمحاسب) =====
+const W_SITES = ["فرع العامرية", "فرع العجمى", "مصنع العامرية", "دمنهور", "كفر الدوار", "المنصورة", "فرع طنطا", "طنطا مصنع"];
+const WS = { base: [], ovr: {}, edit: null, pending: [] };
+const arNorm = s => String(s ?? "").replace(/[أإآ]/g, "ا").replace(/ة/g, "ه").replace(/ى/g, "ي").replace(/\s+/g, " ").trim();
+const typeLabel = t => ({ "اساسي": "أساسي" }[t] || t || "—");
+async function initWorkers() {
+  $("w-site").innerHTML = `<option value="">كل المواقع</option>` + W_SITES.map(s => `<option>${esc(s)}</option>`).join("");
+  $("w-site2").innerHTML = W_SITES.map(s => `<option>${esc(s)}</option>`).join("");
+  $("w-from").value = today();
+  const snaps = await Promise.all(W_SITES.map(s => getDoc(doc(db, "rosters_base", s)).catch(() => null)));
+  WS.base = [];
+  snaps.forEach((sn, i) => { if (sn?.exists()) (sn.data().workers || []).forEach(w => WS.base.push({ ...w, site: W_SITES[i] })); });
+  $("w-jobs").innerHTML = [...new Set(WS.base.map(w => w.job).filter(Boolean))].sort().map(j => `<option value="${esc(j)}">`).join("");
+  onSnapshot(collection(db, "roster_overrides"), snap => {
+    WS.ovr = {}; snap.forEach(d => WS.ovr[d.id] = d.data());
+    renderWorkers(); renderOverrides();
+  }, err => show($("w-msg"), "err", "مش قادر أقرا التعديلات: " + err.message));
+  renderWorkers();
+}
+function current(w) { const o = WS.ovr[w.code]; return o ? { ...w, site: o.site || w.site, job: o.job || w.job, type: o.type || w.type, edited: true } : w; }
+function renderWorkers() {
+  const q = arNorm($("w-q").value), site = $("w-site").value;
+  let list = WS.base.map(current);
+  if (site) list = list.filter(w => w.site === site);
+  if (q) list = list.filter(w => arNorm(w.name).includes(q) || String(w.code).toLowerCase().includes(q.toLowerCase()) || String(w.nid).includes(q));
+  $("w-count").textContent = `${fmt(list.length)} عامل` + (list.length > 100 ? " — بيظهر أول 100، ضيّق البحث" : "");
+  $("w-list").innerHTML = list.slice(0, 100).map(w => `<tr><td>${esc(w.name)}</td><td>${esc(w.code)}</td><td>${esc(w.site)}</td>
+    <td>${esc(typeLabel(w.type))}${w.edited ? ` <span class="amd">معدّل</span>` : ""}</td><td>${esc(w.job)}</td>
+    <td><button class="btn sec small" data-w="${esc(w.code)}">تعديل</button></td></tr>`).join("") || `<tr><td colspan="6" class="muted">مفيش نتايج.</td></tr>`;
+}
+function renderOverrides() {
+  const byCode = Object.fromEntries(WS.base.map(w => [w.code, w]));
+  const rows = Object.entries(WS.ovr).sort((a, b) => (b[1].at?.seconds || 0) - (a[1].at?.seconds || 0));
+  $("w-ovr").innerHTML = rows.length ? rows.map(([code, o]) => {
+    const b = byCode[code] || {};
+    const ch = [];
+    if (o.type === "مشي") ch.push("مشي");
+    else {
+      if (o.type && o.type !== b.type) ch.push(`${typeLabel(b.type)} ← ${typeLabel(o.type)}`);
+      if (o.job && o.job !== b.job) ch.push(`الوظيفة: ${o.job}`);
+      if (o.site && o.site !== b.site) ch.push(`${b.site || "—"} ← ${o.site}`);
+    }
+    return `<tr><td>${esc(o.name || b.name || "")}</td><td>${esc(code)}</td><td>${esc(ch.join("، ") || "بدون فرق عن الرواتب")}${o.note ? `<div class="muted">${esc(o.note)}</div>` : ""}</td>
+      <td style="direction:ltr;text-align:right">${esc(o.from || "")}</td><td class="muted">${esc(o.by_email || "")}</td>
+      <td><button class="btn sec small" data-undo="${esc(code)}">إلغاء التعديل</button></td></tr>`;
+  }).join("") : `<tr><td colspan="6" class="muted">مفيش تعديلات.</td></tr>`;
+}
+$("w-q")?.addEventListener("input", renderWorkers);
+$("w-site")?.addEventListener("change", renderWorkers);
+$("w-list")?.addEventListener("click", e => {
+  const code = e.target.dataset.w; if (!code) return;
+  const w = current(WS.base.find(x => x.code === code));
+  WS.edit = WS.base.find(x => x.code === code);
+  $("w-title").textContent = `${w.name} — ${w.code}`;
+  $("w-type").value = ["اساسي", "موسمي", "يومية", "مشي"].includes(w.type) ? w.type : "يومية";
+  $("w-job").value = w.job || ""; $("w-site2").value = w.site; $("w-note").value = WS.ovr[code]?.note || "";
+  $("w-from").value = WS.ovr[code]?.from || today();
+  hide($("w-msg")); $("w-form").classList.remove("hidden"); $("w-form").scrollIntoView({ behavior: "smooth", block: "center" });
+});
+$("w-cancel")?.addEventListener("click", () => $("w-form").classList.add("hidden"));
+function ovrDoc(w, type, job, site, from, note) {
+  const u = auth.currentUser;
+  return { code: w.code, name: w.name || "", nid: w.nid || "", site: type === "مشي" ? (w.site || "") : site, job: job || w.job || "", type,
+    from: from || today(), note: note || "", by: u.uid, by_email: u.email || "", at: serverTimestamp() };
+}
+$("w-save")?.addEventListener("click", async () => {
+  const w = WS.edit; if (!w) return;
+  const type = $("w-type").value, job = $("w-job").value.trim(), site = $("w-site2").value;
+  if (!job && type !== "مشي") return show($("w-msg"), "err", "اكتب الوظيفة.");
+  $("w-save").disabled = true;
+  try {
+    if (type === w.type && job === w.job && site === w.site) {
+      if (WS.ovr[w.code]) await deleteDoc(doc(db, "roster_overrides", w.code));
+      show($("w-msg"), "ok", "البيانات رجعت زي شيت الرواتب.");
+    } else {
+      await setDoc(doc(db, "roster_overrides", w.code), ovrDoc(w, type, job, site, $("w-from").value, $("w-note").value.trim()));
+      show($("w-msg"), "ok", "اتحفظ. كشف الموقع هيتحدّث خلال ثواني.");
+    }
+    setTimeout(() => $("w-form").classList.add("hidden"), 1200);
+  } catch (err) { show($("w-msg"), "err", "ماتحفظش: " + (err.code === "permission-denied" ? "مش مسموح للحساب ده." : err.message)); }
+  $("w-save").disabled = false;
+});
+$("w-ovr")?.addEventListener("click", async e => {
+  const code = e.target.dataset.undo; if (!code) return;
+  if (!confirm("تلغي التعديل ده؟ العامل هيرجع زي ما هو في شيت الرواتب.")) return;
+  try { await deleteDoc(doc(db, "roster_overrides", code)); } catch (err) { alert("مااتلغاش: " + err.message); }
+});
+// رفع من إكسيل
+const TYPE_IN = { "اساسي": "اساسي", "أساسي": "اساسي", "سنوي": "اساسي", "موسمي": "موسمي", "يوميه": "يومية", "يومية": "يومية", "مشي": "مشي", "حذف": "مشي" };
+$("w-file")?.addEventListener("change", async e => {
+  hide($("w-up-msg")); $("w-preview").classList.add("hidden"); WS.pending = [];
+  const f = e.target.files[0]; if (!f) return;
+  try {
+    const wb = XLSX.read(new Uint8Array(await f.arrayBuffer()), { type: "array", cellDates: true });
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: "", raw: false });
+    const col = (r, ...names) => { for (const n of names) { const k = Object.keys(r).find(k => norm(k) === n); if (k !== undefined && norm(r[k])) return norm(r[k]); } return ""; };
+    const byCode = Object.fromEntries(WS.base.map(w => [String(w.code).toUpperCase(), w]));
+    const problems = [];
+    rows.forEach((r, i) => {
+      const code = col(r, "الكود", "كود الموظف", "code").toUpperCase(); if (!code) return;
+      const w = byCode[code]; if (!w) { problems.push(`سطر ${i + 2}: الكود ${code} مش في مواقع الحضور`); return; }
+      const cur = current(w);
+      const tRaw = col(r, "النوع", "نوع الوظيفة"); const type = tRaw ? TYPE_IN[arNorm(tRaw).replace("ا", "ا")] || TYPE_IN[tRaw] : cur.type;
+      if (tRaw && !type) { problems.push(`سطر ${i + 2}: النوع "${tRaw}" مش معروف`); return; }
+      const job = col(r, "الوظيفة") || cur.job, site = col(r, "الموقع") || cur.site;
+      if (type !== "مشي" && !W_SITES.includes(site)) { problems.push(`سطر ${i + 2}: الموقع "${site}" مش من مواقع الحضور`); return; }
+      if (type === cur.type && job === cur.job && site === cur.site) return;
+      WS.pending.push({ w, cur, type, job, site, from: col(r, "ساري من") || today(), note: col(r, "ملاحظة") });
+    });
+    $("w-prev-list").innerHTML = WS.pending.map(p => `<tr><td>${esc(p.w.code)}</td><td>${esc(p.w.name)}</td>
+      <td>${esc(typeLabel(p.cur.type))} · ${esc(p.cur.job)} · ${esc(p.cur.site)}</td><td><b>${esc(typeLabel(p.type))}</b>${p.type !== "مشي" ? ` · ${esc(p.job)} · ${esc(p.site)}` : ""}</td><td>${esc(p.note)}</td></tr>`).join("");
+    show($("w-up-msg"), problems.length ? "warn" : "info", `${fmt(WS.pending.length)} تعديل جاهز للحفظ.` + (problems.length ? `\n${problems.length} سطر فيهم مشكلة ومش هيتحفظوا:\n` + problems.slice(0, 15).join("\n") : ""));
+    $("w-up-msg").style.whiteSpace = "pre-line";
+    if (WS.pending.length) $("w-preview").classList.remove("hidden");
+  } catch (err) { show($("w-up-msg"), "err", "مش قادر أقرا الملف: " + err.message); }
+});
+$("w-discard")?.addEventListener("click", () => { WS.pending = []; $("w-preview").classList.add("hidden"); $("w-file").value = ""; hide($("w-up-msg")); });
+$("w-apply")?.addEventListener("click", async () => {
+  if (!WS.pending.length) return;
+  $("w-apply").disabled = true;
+  try {
+    for (let i = 0; i < WS.pending.length; i += 400) {
+      const b = writeBatch(db);
+      WS.pending.slice(i, i + 400).forEach(p => b.set(doc(db, "roster_overrides", p.w.code), ovrDoc(p.w, p.type, p.job, p.site, p.from, p.note)));
+      await b.commit();
+    }
+    show($("w-up-msg"), "ok", `اتحفظ ${fmt(WS.pending.length)} تعديل. الكشوف هتتحدّث خلال ثواني.`);
+    WS.pending = []; $("w-preview").classList.add("hidden"); $("w-file").value = "";
+  } catch (err) { show($("w-up-msg"), "err", "ماتحفظش: " + err.message); }
+  $("w-apply").disabled = false;
+});
 </script>
 </body>
 </html>

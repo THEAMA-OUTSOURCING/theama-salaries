@@ -121,6 +121,10 @@ h2{font-size:15px;font-weight:600;margin-bottom:8px;}
       <div class="stats" id="stats"></div>
       <div class="msg" id="checks"></div>
       <div class="card">
+        <h2>العدد المطلوب</h2>
+        <div id="plan-box"></div>
+      </div>
+      <div class="card">
         <h2>العمال</h2>
         <p class="muted" style="margin-bottom:4px;">اللي متلوّن بالأصفر محتاج تراجعه، واللي بالرمادي مش موجود في أي صورة لسه.</p>
         <div id="workers"></div>
@@ -141,7 +145,7 @@ h2{font-size:15px;font-weight:600;margin-bottom:8px;}
 
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-import { getFirestore, collection, addDoc, doc, getDoc, setDoc, deleteDoc, query, where, onSnapshot, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { getFirestore, collection, addDoc, doc, getDoc, getDocs, setDoc, deleteDoc, query, where, onSnapshot, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 
 const app = initializeApp({
@@ -164,7 +168,55 @@ function hide(el) { el.className = "msg"; el.textContent = ""; }
 const pad = n => String(n).padStart(2, "0");
 const ymd = d => d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
 
-const S = { sites: [], site: null, date: null, roster: [], pages: [], day: null, choice: {}, unsubPages: null, unsubDay: null };
+const S = { sites: [], site: null, date: null, roster: [], pages: [], day: null, choice: {}, unsubPages: null, unsubDay: null, plan: {}, lateCount: 0 };
+
+// ===== العدد المطلوب من شيت الاحتياج (نفس حساب صفحة الإدارة) =====
+const pnorm = s => String(s ?? "").replace(/\s+/g, " ").trim();
+const pkey = s => pnorm(s).toLowerCase();
+const ckey = (loc, pos) => pnorm(loc) + "|" + pkey(pos);
+async function loadPlan() {
+  S.plan = {};
+  try {
+    const month = S.date.slice(0, 7);
+    const plans = await getDocs(collection(db, "plans"));
+    let pm = null, plan = null;
+    plans.forEach(d => { if (d.id <= month && (!pm || d.id > pm)) { pm = d.id; plan = d.data(); } });
+    if (!plan) return;
+    const [am, st] = await Promise.all([
+      getDocs(query(collection(db, "plan_amendments"), where("month", "==", pm))),
+      getDoc(doc(db, "plan_settings", "mapping"))
+    ]);
+    const amends = []; am.forEach(d => amends.push(d.data()));
+    amends.sort((a, b) => a.effective_date.localeCompare(b.effective_date) || ((a.created_at?.seconds || 0) - (b.created_at?.seconds || 0)));
+    const set = st.exists() ? st.data() : null; if (!set) return;
+    const day = pm === month ? S.date : pm + "-31";
+    const cmap = new Map();
+    plan.rows.forEach(r => { const k = ckey(r.loc, r.pos); const e = cmap.get(k) || { loc: pnorm(r.loc), pos: pnorm(r.pos), value: 0 }; e.value += Number(r.hc) || 0; cmap.set(k, e); });
+    cmap.forEach((e, k) => { const hits = amends.filter(a => ckey(a.loc, a.pos) === k && a.effective_date <= day); if (hits.length) e.value = hits[hits.length - 1].to; });
+    cmap.forEach(e => {
+      const job = set.posMap?.[pkey(e.pos)]; if (!job) return;
+      const split = (set.splits || []).find(x => ckey(x.loc, x.pos) === ckey(e.loc, e.pos));
+      if (split?.parts?.length) {
+        const sum = split.parts.reduce((a, p) => a + Number(p.count || 0), 0);
+        split.parts.forEach((p, i) => { if (pnorm(p.site) === S.site) S.plan[job] = (S.plan[job] || 0) + Number(p.count || 0) + (i === 0 ? e.value - sum : 0); });
+        return;
+      }
+      const ov = (set.overrides || []).find(o => ckey(o.loc, o.pos) === ckey(e.loc, e.pos));
+      const site = ov ? pnorm(ov.site) : set.locMap?.[pnorm(e.loc)];
+      if (site === S.site) S.plan[job] = (S.plan[job] || 0) + e.value;
+    });
+  } catch (e) { S.plan = {}; }
+}
+async function loadLate() {
+  S.lateCount = 0;
+  try {
+    const snap = await getDocs(query(collection(db, "att_days"), where("site", "==", S.site)));
+    const month = S.date.slice(0, 7);
+    snap.forEach(d => { const x = d.data(); if (x.late && x.date?.startsWith(month) && x.date !== S.date) S.lateCount++; });
+  } catch (e) { S.lateCount = 0; }
+}
+const ORD = ["الأولى", "التانية", "التالتة", "الرابعة", "الخامسة", "السادسة", "السابعة", "التامنة", "التاسعة", "العاشرة"];
+const ordinal = n => ORD[n - 1] || `رقم ${n}`;
 
 // ===== الدخول =====
 $("l-btn").addEventListener("click", async () => {
@@ -216,6 +268,7 @@ async function openDay() {
   } catch (e) { S.roster = []; }
   if (!S.roster.length) show($("day-state"), "err", "كشف الموقع مش موجود لسه. الأدمن لازم يعمل مزامنة من لوحة الإدارة.");
   else hide($("day-state"));
+  await Promise.all([loadPlan(), loadLate()]);
 
   S.unsubDay = onSnapshot(doc(db, "att_days", S.site + "__" + S.date), snap => {
     S.day = snap.exists() ? snap.data() : null;
@@ -346,6 +399,19 @@ function render() {
   }).join("")).join("");
   $("workers").innerHTML = html;
 
+  // العدد المطلوب لكل وظيفة (أساسي + موسمي مع بعض)
+  const perJob = {};
+  S.roster.forEach(w => {
+    const r = ai[w.code];
+    const def = S.choice[w.code] ?? (r && r.s !== "U" && !needsReview(r) ? r.s : null);
+    perJob[w.job] ??= 0; if (def === "P") perJob[w.job]++;
+  });
+  S.over = Object.entries(perJob).filter(([j, n]) => S.plan[j] != null && n > S.plan[j]).map(([job, n]) => ({ job, n, plan: S.plan[job] }));
+  const planRows = Object.keys(perJob).map(j => `<tr><td>${esc(j)}</td><td class="n">${fmt(perJob[j])}</td><td class="n">${S.plan[j] != null ? fmt(S.plan[j]) : "—"}</td>
+    <td class="n">${S.plan[j] == null ? "" : perJob[j] > S.plan[j] ? `<span class="pill p-err">زيادة ${fmt(perJob[j] - S.plan[j])}</span>` : perJob[j] < S.plan[j] ? `<span class="pill p-grey">ناقص ${fmt(S.plan[j] - perJob[j])}</span>` : `<span class="pill p-ok">مطابق</span>`}</td></tr>`).join("");
+  $("plan-box").innerHTML = Object.keys(S.plan).length ? `<table style="width:100%;border-collapse:collapse;font-size:13px;"><thead><tr><th style="text-align:right">الوظيفة</th><th>الحاضرين</th><th>المطلوب</th><th></th></tr></thead><tbody>${planRows}</tbody></table>
+    <p class="muted" style="margin-top:6px;">المطلوب = أساسي + موسمي، من شيت الاحتياج بتاع الشهر.</p>` : `<p class="muted">مفيش عدد مطلوب متسجل للموقع ده.</p>`;
+
   $("stats").innerHTML = [[P, "حاضر"], [A, "غايب"], [open, "محتاج قرار"], [flagged, "اتعلّم للمراجعة"]]
     .map(([v, l]) => `<div class="stat"><div class="v">${fmt(v)}</div><div class="l">${l}</div></div>`).join("");
 
@@ -362,11 +428,11 @@ function render() {
   if (busy) msgs.push(`فيه ${fmt(busy)} صورة لسه بتتقري.`);
   const missing = S.roster.filter(w => !ai[w.code]).length;
   if (missing && S.pages.some(p => p.status === "done")) msgs.push(`${fmt(missing)} عامل مالهمش صف في أي صورة — اتأكد إنك صوّرت كل الصفحات، أو حدد حالتهم بإيدك.`);
+  if (S.over.length) msgs.push("الحاضرين عدّوا العدد المطلوب: " + S.over.map(o => `${o.job} ${fmt(o.n)} والمطلوب ${fmt(o.plan)}`).join("، ") + ". حدد مين اللي مش هيتحسب (علّم عليه غياب).");
   if (msgs.length) show($("checks"), "warn", msgs.join("\n")); else hide($("checks"));
-
   const btn = $("confirm");
   btn.disabled = open > 0 || busy > 0 || S.day?.status === "approved";
-  btn.textContent = open > 0 ? `فاضل ${fmt(open)} عامل محتاجين قرار` : busy ? "استنى لحد ما الصور تتقري" : (S.day ? "تأكيد التعديل" : "تأكيد الحضور");
+  btn.textContent = open > 0 ? `فاضل ${fmt(open)} عامل محتاجين قرار` : busy ? "استنى لحد ما الصور تتقري" : S.over.length ? "العدد أكتر من المطلوب" : (S.day ? "تأكيد التعديل" : "تأكيد الحضور");
 }
 
 $("workers").addEventListener("click", e => {
@@ -387,8 +453,16 @@ $("confirm").addEventListener("click", async () => {
     if (s === "P") P++; else A++;
     entries[w.code] = { s, ai: r ? r.s : "", by: S.choice[w.code] && (!r || S.choice[w.code] !== r.s) ? "sup" : "ai", note: r?.note || "", page: r?.page || "" };
   }
+  if (S.over.length) {
+    try {
+      await addDoc(collection(db, "att_alerts"), { type: "over_plan", site: S.site, date: S.date,
+        detail: S.over.map(o => `${o.job}: ${o.n} / ${o.plan}`).join("، "), by: u.uid, by_email: u.email || "", at: serverTimestamp() });
+    } catch (e) {}
+    return show($("c-msg"), "err", "مينفعش تأكد: الحاضرين أكتر من العدد المطلوب. " + S.over.map(o => `${o.job}: ${o.n} والمطلوب ${o.plan}`).join("، "));
+  }
   const late = new Date() > deadlineOf(S.date);
-  if (late && !confirm(`اتأخرت في رفع حضور يوم ${S.date}.\nالتأخير بيتسجل وبيأثر على تقييمك وراتبك.\n\nتأكد الحضور؟`)) return;
+  const nth = S.lateCount + 1;
+  if (late && !S.day?.late && !confirm(`اتأخرت في رفع حضور يوم ${S.date}.\nدي المرة ${ordinal(nth)} الشهر ده.\nالتأخير بيتسجل وبيأثر على تقييمك وراتبك.\n\nتأكد الحضور؟`)) return;
   if (!late && !confirm(`تأكيد حضور ${S.site} يوم ${S.date}:\nحاضر ${P} — غايب ${A}`)) return;
   $("confirm").disabled = true;
   try {
@@ -399,7 +473,6 @@ $("confirm").addEventListener("click", async () => {
       late: late || !!S.day?.late,
       confirmed_by: u.uid, confirmed_email: u.email || "", confirmed_at: serverTimestamp()
     });
-    S.choice = {};
     show($("c-msg"), "ok", "اتأكد الحضور ✓");
   } catch (err) {
     show($("c-msg"), "err", "ماتأكدش: " + (err.code === "permission-denied" ? "مش مسموح (يمكن اليوم اتعتمد)." : err.message));
@@ -431,7 +504,7 @@ function sheetHtml(site, typeLabel, sheets, month, year) {
     let rows = "", n = 0, count = 0;
     for (let r = 0; r < ROWS_PER_PAGE; r++) {
       const it = s.rows[r];
-      if (it?.band) rows += `<tr class="band"><td colspan="6">${esc(it.band)}</td></tr>`;
+      if (it?.band) rows += `<tr class="band"><td colspan="6">${esc(it.band)}${S.plan[it.band] != null ? " — المطلوب " + S.plan[it.band] : ""}</td></tr>`;
       else if (it) { n++; count++; rows += `<tr><td class="n">${n}</td><td class="nm">${esc(it.w.name)}</td><td class="nid">${esc(it.w.nid)}</td><td class="sig"></td><td class="sig"></td><td></td></tr>`; }
       else rows += `<tr><td class="n"></td><td></td><td></td><td class="sig"></td><td class="sig"></td><td></td></tr>`;
     }
@@ -439,7 +512,7 @@ function sheetHtml(site, typeLabel, sheets, month, year) {
     const part = s.parts > 1 ? ` (${s.part} من ${s.parts})` : "";
     return `<section class="page">
       <div class="head"><div><div class="title">كشف حضور ${esc(site)} — ${typeLabel}</div>
-        <div class="meta">${jobLabel}: <b>${esc(s.jobs.join("، "))}</b>${part}</div><div class="meta">شهر <b>${monthName}</b></div></div>
+        <div class="meta">${jobLabel}: <b>${esc(s.jobs.join("، "))}</b>${part}${s.jobs.length === 1 && S.plan[s.jobs[0]] != null ? ` &nbsp; المطلوب للوظيفة (أساسي + موسمي): <b>${S.plan[s.jobs[0]]}</b>` : ""}</div><div class="meta">شهر <b>${monthName}</b></div></div>
         <div class="pagebox"><small>صفحة</small><span>${p + 1} / ${sheets.length}</span></div></div>
       <div class="datebar">التاريخ: <span dir="ltr" class="fixed"><span class="slot"></span> / ${month} / ${year}</span><span style="margin-inline-start:auto">اليوم: <span class="slot" style="width:28mm"></span></span></div>
       <table><colgroup><col style="width:5%"><col style="width:34%"><col style="width:18%"><col style="width:10%"><col style="width:10%"><col style="width:23%"></colgroup>

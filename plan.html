@@ -246,7 +246,7 @@ td.n,th.n{text-align:center;font-variant-numeric:tabular-nums;}
       </div>
       <div class="card">
         <h2>رفع تعديلات كتير من إكسيل</h2>
-        <p class="muted" style="margin-bottom:8px;">شيت فيه عمود <b>الكود</b>، ومعاه عمود أو أكتر من: <b>النوع</b> (أساسي / موسمي / يومية / مشي)، <b>الوظيفة</b>، <b>الموقع</b>، <b>ساري من</b>، <b>ملاحظة</b>. هتشوف المقارنة قبل الحفظ.</p>
+        <p class="muted" style="margin-bottom:8px;">شيت فيه عمود <b>الكود</b>، ومعاه عمود أو أكتر من: <b>النوع</b> (أساسي / موسمي / يومية / مشي)، <b>الوظيفة</b>، <b>الموقع</b>، <b>ساري من</b>، <b>ملاحظة</b>. ولعامل جديد مالوش كود: سيب الكود فاضي واكتب <b>الاسم</b> و<b>الرقم القومي</b> و<b>الموقع</b> و<b>النوع</b> و<b>الوظيفة</b> (هيتضاف من غير بطاقة، والمشرف يرفعها بعدين). هتشوف المقارنة قبل الحفظ.</p>
         <input type="file" id="w-file" accept=".xlsx,.xls">
         <div class="msg" id="w-up-msg"></div>
         <div class="hidden" id="w-preview">
@@ -944,7 +944,7 @@ async function initWorkers() {
     const rows = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(x => x.status !== "rejected")
       .sort((a, b) => (b.at?.seconds || 0) - (a.at?.seconds || 0));
     $("w-new").innerHTML = rows.length ? rows.map(x => `<tr><td>${esc(x.name)}</td><td style="direction:ltr;text-align:right">${esc(x.nid)}</td><td>${esc(x.site)}</td><td>${esc(x.job)}</td>
-      <td>${x.role === "roster" ? "عامل في الكشف" : "بديل"}</td><td style="direction:ltr;text-align:right">${esc(x.first_day || "")}</td>
+      <td>${x.role === "roster" ? "عامل في الكشف" : "بديل"}${x.no_card ? `<div class="c-s" style="font-size:12px;">من غير بطاقة</div>` : ""}</td><td style="direction:ltr;text-align:right">${esc(x.first_day || "")}</td>
       <td><select data-ntype="${esc(x.id)}"><option value="">${x.role === "roster" ? "جديد (مستني)" : "بديل جديد"}</option>${["اساسي", "موسمي", "يومية"].map(t => `<option value="${t}" ${x.type === t ? "selected" : ""}>${typeLabel(t)}</option>`).join("")}</select></td>
       <td class="row" style="gap:4px;"><button class="btn sec small" data-nsave="${esc(x.id)}">حفظ</button><button class="btn sec small" data-nrej="${esc(x.id)}">رفض</button></td></tr>`).join("")
       : `<tr><td colspan="8" class="muted">مفيش.</td></tr>`;
@@ -1044,9 +1044,18 @@ $("w-ovr")?.addEventListener("click", async e => {
   try { await deleteDoc(doc(db, "roster_overrides", code)); } catch (err) { alert("مااتلغاش: " + err.message); }
 });
 // رفع من إكسيل
+function nidCheck(nid) {
+  if (!/^[23]\d{13}$/.test(nid)) return "الرقم القومي لازم 14 رقم ويبدأ بـ 2 أو 3";
+  const y = (nid[0] === "2" ? 1900 : 2000) + +nid.slice(1, 3), m = +nid.slice(3, 5), d = +nid.slice(5, 7);
+  const b = new Date(y, m - 1, d);
+  if (b.getFullYear() !== y || b.getMonth() !== m - 1 || b.getDate() !== d) return "تاريخ الميلاد في الرقم القومي غلط";
+  const t = new Date(); let age = t.getFullYear() - y - ((t.getMonth() + 1 < m || (t.getMonth() + 1 === m && t.getDate() < d)) ? 1 : 0);
+  if (age < 18) return `تحت السن القانوني (${age} سنة)`;
+  return "";
+}
 const TYPE_IN = { "اساسي": "اساسي", "أساسي": "اساسي", "سنوي": "اساسي", "موسمي": "موسمي", "يوميه": "يومية", "يومية": "يومية", "مشي": "مشي", "حذف": "مشي" };
 $("w-file")?.addEventListener("change", async e => {
-  hide($("w-up-msg")); $("w-preview").classList.add("hidden"); WS.pending = [];
+  hide($("w-up-msg")); $("w-preview").classList.add("hidden"); WS.pending = []; WS.pendingNew = [];
   const f = e.target.files[0]; if (!f) return;
   try {
     const wb = XLSX.read(new Uint8Array(await f.arrayBuffer()), { type: "array", cellDates: true });
@@ -1055,7 +1064,20 @@ $("w-file")?.addEventListener("change", async e => {
     const byCode = Object.fromEntries(WS.base.map(w => [String(w.code).toUpperCase(), w]));
     const problems = [];
     rows.forEach((r, i) => {
-      const code = col(r, "الكود", "كود الموظف", "code").toUpperCase(); if (!code) return;
+      const code = col(r, "الكود", "كود الموظف", "code").toUpperCase();
+      if (!code) {
+        const nid = col(r, "الرقم القومي", "الرقم القومى").replace(/\D/g, ""), name = col(r, "الاسم");
+        if (!nid && !name) return;
+        const bad = nidCheck(nid); if (bad) { problems.push(`سطر ${i + 2}: ${name || nid} — ${bad}`); return; }
+        if (!name) { problems.push(`سطر ${i + 2}: الاسم ناقص`); return; }
+        if (WS.base.some(w => w.nid === nid)) { problems.push(`سطر ${i + 2}: ${name} موجود في الرواتب — اكتب كوده`); return; }
+        const tIn = col(r, "النوع", "نوع الوظيفة"), nt = TYPE_IN[arNorm(tIn)] || TYPE_IN[tIn], site = col(r, "الموقع"), job = col(r, "الوظيفة");
+        if (!["اساسي", "موسمي", "يومية"].includes(nt)) { problems.push(`سطر ${i + 2}: النوع لازم أساسي أو موسمي أو يومية`); return; }
+        if (!W_SITES.includes(site)) { problems.push(`سطر ${i + 2}: الموقع "${site}" مش من مواقع الحضور`); return; }
+        if (!job) { problems.push(`سطر ${i + 2}: الوظيفة ناقصة`); return; }
+        WS.pendingNew.push({ nid, name, site, job, type: nt });
+        return;
+      }
       const w = byCode[code]; if (!w) { problems.push(`سطر ${i + 2}: الكود ${code} مش في مواقع الحضور`); return; }
       const cur = current(w);
       const tRaw = col(r, "النوع", "نوع الوظيفة"); const type = tRaw ? TYPE_IN[arNorm(tRaw).replace("ا", "ا")] || TYPE_IN[tRaw] : cur.type;
@@ -1065,25 +1087,30 @@ $("w-file")?.addEventListener("change", async e => {
       if (type === cur.type && job === cur.job && site === cur.site) return;
       WS.pending.push({ w, cur, type, job, site, from: col(r, "ساري من") || today(), note: col(r, "ملاحظة") });
     });
-    $("w-prev-list").innerHTML = WS.pending.map(p => `<tr><td>${esc(p.w.code)}</td><td>${esc(p.w.name)}</td>
+    $("w-prev-list").innerHTML = WS.pendingNew.map(n => `<tr><td>جديد</td><td>${esc(n.name)}<div class="muted" style="direction:ltr;text-align:right">${esc(n.nid)}</div></td>
+      <td>—</td><td><b>${esc(typeLabel(n.type))}</b> · ${esc(n.job)} · ${esc(n.site)}</td><td>من غير بطاقة</td></tr>`).join("") + WS.pending.map(p => `<tr><td>${esc(p.w.code)}</td><td>${esc(p.w.name)}</td>
       <td>${esc(typeLabel(p.cur.type))} · ${esc(p.cur.job)} · ${esc(p.cur.site)}</td><td><b>${esc(typeLabel(p.type))}</b>${p.type !== "مشي" ? ` · ${esc(p.job)} · ${esc(p.site)}` : ""}</td><td>${esc(p.note)}</td></tr>`).join("");
-    show($("w-up-msg"), problems.length ? "warn" : "info", `${fmt(WS.pending.length)} تعديل جاهز للحفظ.` + (problems.length ? `\n${problems.length} سطر فيهم مشكلة ومش هيتحفظوا:\n` + problems.slice(0, 15).join("\n") : ""));
+    show($("w-up-msg"), problems.length ? "warn" : "info", `${fmt(WS.pending.length)} تعديل و${fmt(WS.pendingNew.length)} عامل جديد جاهزين للحفظ.` + (problems.length ? `\n${problems.length} سطر فيهم مشكلة ومش هيتحفظوا:\n` + problems.slice(0, 15).join("\n") : ""));
     $("w-up-msg").style.whiteSpace = "pre-line";
-    if (WS.pending.length) $("w-preview").classList.remove("hidden");
+    if (WS.pending.length || WS.pendingNew.length) $("w-preview").classList.remove("hidden");
   } catch (err) { show($("w-up-msg"), "err", "مش قادر أقرا الملف: " + err.message); }
 });
 $("w-discard")?.addEventListener("click", () => { WS.pending = []; $("w-preview").classList.add("hidden"); $("w-file").value = ""; hide($("w-up-msg")); });
 $("w-apply")?.addEventListener("click", async () => {
-  if (!WS.pending.length) return;
+  if (!WS.pending.length && !WS.pendingNew.length) return;
   $("w-apply").disabled = true;
   try {
+    const u = auth.currentUser;
+    for (const n of WS.pendingNew)
+      await setDoc(doc(db, "new_workers", n.nid), { nid: n.nid, name: n.name, site: n.site, job: n.job, type: n.type, role: "roster",
+        no_card: true, first_day: today(), added_by: u.uid, added_email: u.email || "", at: serverTimestamp() });
     for (let i = 0; i < WS.pending.length; i += 400) {
       const b = writeBatch(db);
       WS.pending.slice(i, i + 400).forEach(p => b.set(doc(db, "roster_overrides", p.w.code), ovrDoc(p.w, p.type, p.job, p.site, p.from, p.note)));
       await b.commit();
     }
-    show($("w-up-msg"), "ok", `اتحفظ ${fmt(WS.pending.length)} تعديل. الكشوف هتتحدّث خلال ثواني.`);
-    WS.pending = []; $("w-preview").classList.add("hidden"); $("w-file").value = "";
+    show($("w-up-msg"), "ok", `اتحفظ ${fmt(WS.pending.length)} تعديل و${fmt(WS.pendingNew.length)} عامل جديد. الكشوف هتتحدّث خلال ثواني.`);
+    WS.pending = []; WS.pendingNew = []; $("w-preview").classList.add("hidden"); $("w-file").value = "";
   } catch (err) { show($("w-up-msg"), "err", "ماتحفظش: " + err.message); }
   $("w-apply").disabled = false;
 });

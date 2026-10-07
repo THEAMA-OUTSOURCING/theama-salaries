@@ -231,6 +231,16 @@ td.n,th.n{text-align:center;font-variant-numeric:tabular-nums;}
         <div class="msg" id="w-msg"></div>
       </div>
       <div class="card">
+        <h2>عمال جداد اتضافوا من المواقع (بالبطاقة)</h2>
+        <p class="muted" style="margin-bottom:8px;">حدد النوع للي اتضاف للكشف. لحد ما تحدده، بيظهر في الكشف "جديد". والبدلاء الجداد بيفضلوا في قايمة بدلاء موقعهم.</p>
+        <div class="tbl"><table><thead><tr><th>الاسم</th><th>الرقم القومي</th><th>الموقع</th><th>الوظيفة</th><th>اتضاف كـ</th><th>أول يوم</th><th>النوع</th><th></th></tr></thead><tbody id="w-new"></tbody></table></div>
+      </div>
+      <div class="card">
+        <h2>أسماء المشرفين شالوها من الكشف</h2>
+        <p class="muted" style="margin-bottom:8px;">دي اتشالت من الكشف المطبوع بس. لو العامل مشي فعلاً، سجّله "مشي" عشان يتشال من السجلات لحد شيت الرواتب الجاي.</p>
+        <div class="tbl"><table><thead><tr><th>الاسم</th><th>الكود</th><th>الموقع</th><th>السبب</th><th>بواسطة</th><th></th></tr></thead><tbody id="w-rem"></tbody></table></div>
+      </div>
+      <div class="card">
         <h2>التعديلات اللي لسه مش في شيت الرواتب</h2>
         <div class="tbl"><table><thead><tr><th>الاسم</th><th>الكود</th><th>التعديل</th><th>ساري من</th><th>بواسطة</th><th></th></tr></thead><tbody id="w-ovr"></tbody></table></div>
       </div>
@@ -309,7 +319,7 @@ td.n,th.n{text-align:center;font-variant-numeric:tabular-nums;}
 
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-import { getFirestore, collection, getDocs, addDoc, doc, query, where, setDoc, getDoc, deleteDoc, writeBatch, serverTimestamp, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { getFirestore, collection, getDocs, addDoc, doc, query, where, setDoc, getDoc, deleteDoc, updateDoc, writeBatch, serverTimestamp, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 
 const firebaseConfig = {
@@ -930,7 +940,41 @@ async function initWorkers() {
     renderWorkers(); renderOverrides();
   }, err => show($("w-msg"), "err", "مش قادر أقرا التعديلات: " + err.message));
   renderWorkers();
+  onSnapshot(collection(db, "new_workers"), snap => {
+    const rows = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(x => x.status !== "rejected")
+      .sort((a, b) => (b.at?.seconds || 0) - (a.at?.seconds || 0));
+    $("w-new").innerHTML = rows.length ? rows.map(x => `<tr><td>${esc(x.name)}</td><td style="direction:ltr;text-align:right">${esc(x.nid)}</td><td>${esc(x.site)}</td><td>${esc(x.job)}</td>
+      <td>${x.role === "roster" ? "عامل في الكشف" : "بديل"}</td><td style="direction:ltr;text-align:right">${esc(x.first_day || "")}</td>
+      <td><select data-ntype="${esc(x.id)}"><option value="">${x.role === "roster" ? "جديد (مستني)" : "بديل جديد"}</option>${["اساسي", "موسمي", "يومية"].map(t => `<option value="${t}" ${x.type === t ? "selected" : ""}>${typeLabel(t)}</option>`).join("")}</select></td>
+      <td class="row" style="gap:4px;"><button class="btn sec small" data-nsave="${esc(x.id)}">حفظ</button><button class="btn sec small" data-nrej="${esc(x.id)}">رفض</button></td></tr>`).join("")
+      : `<tr><td colspan="8" class="muted">مفيش.</td></tr>`;
+  }, () => {});
+  onSnapshot(collection(db, "sheet_removals"), snap => {
+    const rows = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    $("w-rem").innerHTML = rows.length ? rows.map(x => `<tr><td>${esc(x.name)}</td><td>${esc(x.code)}</td><td>${esc(x.site)}</td><td>${esc(x.reason)}${x.note ? `<div class="muted">${esc(x.note)}</div>` : ""}</td>
+      <td class="muted">${esc(x.by_email || "")}</td><td>${WS.ovr[x.code]?.type === "مشي" ? `<span class="c-k">متسجل مشي</span>` : `<button class="btn sec small" data-left="${esc(x.code)}">سجّل إنه مشي</button>`}</td></tr>`).join("")
+      : `<tr><td colspan="6" class="muted">مفيش.</td></tr>`;
+  }, () => {});
 }
+$("w-new")?.addEventListener("click", async e => {
+  const id = e.target.dataset.nsave || e.target.dataset.nrej; if (!id) return;
+  try {
+    if (e.target.dataset.nrej) {
+      if (!confirm("ترفض العامل ده؟ هيتشال من الكشف وقايمة البدلاء.")) return;
+      await updateDoc(doc(db, "new_workers", id), { status: "rejected" });
+    } else {
+      const t = document.querySelector(`[data-ntype="${id}"]`).value;
+      await updateDoc(doc(db, "new_workers", id), { type: t || null });
+    }
+  } catch (err) { alert("ماتحفظش: " + err.message); }
+});
+$("w-rem")?.addEventListener("click", async e => {
+  const code = e.target.dataset.left; if (!code) return;
+  const w = WS.base.find(x => x.code === code); if (!w) return alert("العامل ده مش في بيانات الرواتب.");
+  if (!confirm(`تسجل ${w.name} إنه مشي؟`)) return;
+  try { await setDoc(doc(db, "roster_overrides", code), ovrDoc(w, "مشي", w.job, w.site, today(), "اتشال من الكشف")); }
+  catch (err) { alert("ماتسجلش: " + err.message); }
+});
 function current(w) { const o = WS.ovr[w.code]; return o ? { ...w, site: o.site || w.site, job: o.job || w.job, type: o.type || w.type, edited: true } : w; }
 function renderWorkers() {
   const q = arNorm($("w-q").value), site = $("w-site").value;

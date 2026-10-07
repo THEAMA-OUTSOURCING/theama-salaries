@@ -142,6 +142,13 @@ h2{font-size:15px;font-weight:600;margin-bottom:8px;}
       <div class="msg" id="m-msg"></div>
     </div>
 
+    <div class="card hidden" id="fiche-card">
+      <h2>عمال جداد: الفيش والبطاقة</h2>
+      <p class="muted" style="margin-bottom:8px;">الفيش (صحيفة الحالة الجنائية) لازم يترفع خلال 5 أيام عمل من أول يوم حضور. بعد المهلة، حضور العامل بيتقفل لحد ما يترفع.</p>
+      <div id="fiche-list"></div>
+      <div class="msg" id="f-msg"></div>
+    </div>
+
     <div id="review" class="hidden">
       <div class="stats" id="stats"></div>
       <div class="msg" id="checks"></div>
@@ -167,6 +174,18 @@ h2{font-size:15px;font-weight:600;margin-bottom:8px;}
   </div>
 </div>
 <div class="viewer hidden" id="viewer"><img id="viewer-img" alt="صورة الكشف"></div>
+<div class="modal hidden" id="fm">
+  <div class="box">
+    <div class="row" style="justify-content:space-between;margin-bottom:8px;"><h2 id="fm-title" style="margin:0;">رفع الفيش</h2><button class="btn sec small" id="fm-close">قفل</button></div>
+    <p class="muted" style="margin-bottom:10px;">صوّر صفحات الفيش (لحد 3 صفحات)، وهيتحفظوا PDF واحد.</p>
+    <div class="row"><label class="btn sec" for="fm-cam">صوّر صفحة</label><label class="btn sec" for="fm-file">من المعرض</label></div>
+    <input type="file" id="fm-cam" accept="image/*" capture="environment" class="hidden">
+    <input type="file" id="fm-file" accept="image/*" multiple class="hidden">
+    <div id="fm-thumbs" class="row" style="margin-top:10px;"></div>
+    <button class="btn block" id="fm-send" style="margin-top:10px;" disabled>ابعت الفيش</button>
+    <div class="msg" id="fm-msg"></div>
+  </div>
+</div>
 <div class="modal hidden" id="idm">
   <div class="box">
     <div class="row" style="justify-content:space-between;margin-bottom:8px;"><h2 id="idm-title" style="margin:0;">عامل جديد</h2><button class="btn sec small" id="idm-close">قفل</button></div>
@@ -225,7 +244,7 @@ function hide(el) { el.className = "msg"; el.textContent = ""; }
 const pad = n => String(n).padStart(2, "0");
 const ymd = d => d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
 
-const S = { sites: [], site: null, date: null, roster: [], pages: [], day: null, choice: {}, unsubPages: null, unsubDay: null, plan: {}, lateCount: 0, pool: [], rep: {}, removals: [], unsubRoster: null, unsubPool: null, unsubRem: null };
+const S = { sites: [], site: null, date: null, roster: [], pages: [], day: null, choice: {}, unsubPages: null, unsubDay: null, plan: {}, lateCount: 0, pool: [], rep: {}, removals: [], unsubRoster: null, unsubPool: null, unsubRem: null, newWorkers: [], unsubNew: null };
 
 // ===== العدد المطلوب من شيت الاحتياج (نفس حساب صفحة الإدارة) =====
 const pnorm = s => String(s ?? "").replace(/\s+/g, " ").trim();
@@ -328,6 +347,11 @@ async function openDay() {
   else hide($("day-state"));
   S.unsubRoster = onSnapshot(doc(db, "rosters", S.site), snap => { if (snap.exists()) { S.roster = snap.data().workers || []; render(); renderManage(); } }, () => {});
   S.unsubPool = onSnapshot(doc(db, "pools", S.site), snap => { S.pool = snap.exists() ? (snap.data().workers || []) : []; render(); }, () => {});
+  S.unsubNew?.();
+  S.unsubNew = onSnapshot(query(collection(db, "new_workers"), where("site", "==", S.site)), snap => {
+    S.newWorkers = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(x => x.status !== "rejected");
+    renderFiche(); render();
+  }, () => {});
   S.unsubRem = onSnapshot(query(collection(db, "sheet_removals"), where("site", "==", S.site)), snap => {
     S.removals = snap.docs.map(d => ({ id: d.id, ...d.data() })); renderManage();
   }, () => {});
@@ -466,6 +490,8 @@ function render() {
   let P = 0, A = 0, open = 0, flagged = 0;
   const html = Object.entries(groups).map(([g, ws]) => `<div class="grp">${esc(g)} (${fmt(ws.length)})</div>` + ws.map(w => {
     const r = ai[w.code];
+    const blocked = isBlocked(w);
+    if (blocked) S.choice[w.code] = "A";
     const def = S.choice[w.code] ?? (r && r.s !== "U" && !needsReview(r) ? r.s : null);
     if (def === "P") P++; else if (def === "A") A++; else open++;
     const flag = r && needsReview(r);
@@ -478,9 +504,10 @@ function render() {
     const aiTxt = r ? (r.s === "P" ? "قرا: حاضر" : r.s === "A" ? `قرا: غايب${r.word ? " (" + esc(r.word) + ")" : ""}` : "قرا: مش واضح") : "";
     const note = r?.note ? ` — ملاحظة: ${esc(r.note)}` : "";
     const ro = S.day?.status === "approved" ? "disabled" : "";
+    const roP = ro || (blocked ? "disabled" : "");
     return `<div class="w ${!r ? "missing" : flag ? "flag" : ""}">
-      <div class="nm"><b>${esc(w.name)}</b><small>${esc(aiTxt)}${note}${why ? ` · <span style="color:#8a5a10">${esc(why)}</span>` : ""}</small></div>
-      <div class="seg"><button class="p" data-c="${w.code}" data-v="P" aria-pressed="${def === "P"}" ${ro}>حاضر</button><button class="a" data-c="${w.code}" data-v="A" aria-pressed="${def === "A"}" ${ro}>غايب</button></div></div>` +
+      <div class="nm"><b>${esc(w.name)}</b><small>${esc(aiTxt)}${note}${why ? ` · <span style="color:#8a5a10">${esc(why)}</span>` : ""}${blocked ? ` · <span style="color:#a32d2d">الحضور مقفول لحد ما الفيش يترفع</span>` : ""}</small></div>
+      <div class="seg"><button class="p" data-c="${w.code}" data-v="P" aria-pressed="${def === "P"}" ${roP}>حاضر</button><button class="a" data-c="${w.code}" data-v="A" aria-pressed="${def === "A"}" ${ro}>غايب</button></div></div>` +
       (def === "A" ? repBlock(w, r) : "");
   }).join("")).join("");
   $("workers").innerHTML = html;
@@ -674,7 +701,8 @@ function usedReps(except) {
 }
 function candidates(q, except, limit = 6) {
   const used = usedReps(except);
-  return S.pool.filter(p => !used.has(p.nid || p.code))
+  const overdue = new Set(S.newWorkers.filter(x => ficheState(x).st === "overdue").map(x => x.id));
+  return S.pool.filter(p => !used.has(p.nid || p.code) && !overdue.has(p.nid))
     .map(p => ({ p, sc: nameScore(q, p.name) })).filter(x => x.sc >= 0.6)
     .sort((a, b) => b.sc - a.sc).slice(0, limit).map(x => x.p);
 }
@@ -808,7 +836,13 @@ $("idm-ok").addEventListener("click", async () => {
     if (ID.purpose === "replacement" && (inPool || inRoster)) {
       if (inRoster) throw new Error("ده عامل في الكشف أصلاً، مينفعش يبقى بديل.");
     } else if (ID.purpose === "roster" && inRoster) {
-      throw new Error("العامل ده موجود في الكشف أصلاً.");
+      const nw = S.newWorkers.find(x => x.id === d.nid);
+      if (!nw?.no_card) throw new Error("العامل ده موجود في الكشف أصلاً.");
+      // بطاقة لعامل اتضاف من غير بطاقة: السيرفر حفظها خلاص
+      $("idm").classList.add("hidden");
+      show($("m-msg"), "ok", `بطاقة ${d.name} اتحفظت.`);
+      $("idm-ok").disabled = false;
+      return;
     } else {
       await setDoc(doc(db, "new_workers", d.nid), { nid: d.nid, name: d.name, site: S.site,
         job: ID.purpose === "roster" ? $("idm-job").value : (S.roster.find(x => x.code === ID.target)?.job || ""),
@@ -822,6 +856,80 @@ $("idm-ok").addEventListener("click", async () => {
     show($("idm-msg"), "err", err.code === "permission-denied" ? "مااتضافش: يمكن العامل ده اتضاف قبل كده — دوّر عليه في قايمة البدلاء." : err.message);
   }
   $("idm-ok").disabled = false;
+});
+// ===== الفيش =====
+const FICHE_DAYS = 5;
+function workingDaysAfter(iso, n) {
+  const d = new Date(iso + "T00:00:00");
+  while (n > 0) { d.setDate(d.getDate() + 1); if (d.getDay() !== 5) n--; }
+  return d;
+}
+function ficheState(nw) {
+  if (nw.fiche) return { st: "ok" };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(nw.first_day || "")) return { st: "waiting" };
+  const due = workingDaysAfter(nw.first_day, FICHE_DAYS);
+  if (nw.fiche_exception) return { st: "exception", due };
+  const ref = new Date((S.date || ymd(new Date())) + "T00:00:00");
+  return { st: ref > due ? "overdue" : "waiting", due };
+}
+function isBlocked(w) {
+  if (!String(w.code).startsWith("N")) return false;
+  const nw = S.newWorkers.find(x => x.id === w.nid);
+  return !!nw && ficheState(nw).st === "overdue";
+}
+function renderFiche() {
+  const list = S.newWorkers.filter(x => !x.fiche || x.no_card);
+  $("fiche-card").classList.toggle("hidden", !list.length);
+  $("fiche-list").innerHTML = list.map(x => {
+    const f = ficheState(x);
+    const dueTxt = f.due ? f.due.toLocaleDateString("ar-EG", { weekday: "long", day: "numeric", month: "long" }) : "";
+    const st = x.fiche ? `<span class="pill p-ok">الفيش اترفع</span>`
+      : f.st === "overdue" ? `<span class="pill p-err">المهلة خلصت ${esc(dueTxt)}</span>`
+      : f.st === "exception" ? `<span class="pill p-wait">استثناء من الإدارة</span>`
+      : `<span class="pill p-warn">آخر ميعاد ${esc(dueTxt)}</span>`;
+    return `<div class="w"><div class="nm"><b>${esc(x.name)}</b><small>${esc(x.job || "")} · ${x.role === "roster" ? "في الكشف" : "بديل"}</small>
+      <div style="margin-top:4px;">${st}${x.no_card ? ` <span class="pill p-err">البطاقة ناقصة</span>` : ""}</div></div>
+      <div class="row" style="gap:4px;flex-direction:column;align-items:stretch;">
+        ${x.fiche ? "" : `<button class="btn sec small" data-fiche="${esc(x.id)}">رفع الفيش</button>`}
+        ${x.no_card ? `<button class="btn sec small" data-card="${esc(x.id)}">رفع البطاقة</button>` : ""}</div></div>`;
+  }).join("");
+}
+const FM = { nid: null, imgs: [] };
+$("fiche-list").addEventListener("click", e => {
+  const f = e.target.dataset.fiche, c = e.target.dataset.card;
+  if (c) return openId("roster");
+  if (!f) return;
+  const nw = S.newWorkers.find(x => x.id === f);
+  FM.nid = f; FM.imgs = []; $("fm-thumbs").innerHTML = ""; $("fm-send").disabled = true; hide($("fm-msg"));
+  $("fm-title").textContent = "رفع الفيش — " + (nw?.name || "");
+  $("fm").classList.remove("hidden");
+});
+$("fm-close").addEventListener("click", () => $("fm").classList.add("hidden"));
+async function onFiche(e) {
+  const files = [...e.target.files]; e.target.value = "";
+  for (const f of files) {
+    if (FM.imgs.length >= 3) break;
+    try { FM.imgs.push(await compressCard(f)); } catch (err) { show($("fm-msg"), "err", err.message); }
+  }
+  $("fm-thumbs").innerHTML = FM.imgs.map(b => `<img src="data:image/jpeg;base64,${b}" style="height:90px;border:1px solid #ddd;border-radius:8px;">`).join("");
+  $("fm-send").disabled = !FM.imgs.length;
+}
+$("fm-cam").addEventListener("change", onFiche);
+$("fm-file").addEventListener("change", onFiche);
+$("fm-send").addEventListener("click", async () => {
+  if (!FM.imgs.length || !FM.nid) return;
+  $("fm-send").disabled = true; show($("fm-msg"), "info", "بيرفع...");
+  try {
+    const u = auth.currentUser;
+    const ref = await addDoc(collection(db, "doc_uploads"), { site: S.site, nid: FM.nid, kind: "fiche", images: FM.imgs,
+      uploaded_by: u.uid, uploaded_email: u.email || "", status: "pending", created_at: serverTimestamp() });
+    const un = onSnapshot(ref, snap => {
+      const d = snap.data(); if (!d || d.status === "pending" || d.status === "saving") return;
+      un();
+      if (d.status === "done") { $("fm").classList.add("hidden"); show($("f-msg"), "ok", "الفيش اتحفظ ✓"); }
+      else { $("fm-send").disabled = false; show($("fm-msg"), "err", d.error || "الحفظ فشل"); }
+    });
+  } catch (err) { $("fm-send").disabled = false; show($("fm-msg"), "err", "ماترفعش: " + err.message); }
 });
 </script>
 </body>

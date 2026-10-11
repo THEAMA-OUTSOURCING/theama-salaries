@@ -108,6 +108,13 @@ input[type=file]{width:100%;padding:8px;cursor:pointer;font-size:13px;border:1px
 #admin-screen{display:none;max-width:500px;margin:1.5rem auto;}
 #change-pass-screen{display:none;max-width:420px;margin:1.5rem auto;}
 </style>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#c0392b">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="تيما">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="icon-192.png">
+<script>if("serviceWorker" in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}));</script>
 </head>
 <body>
 

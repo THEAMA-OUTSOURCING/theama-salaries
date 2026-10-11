@@ -46,6 +46,13 @@ tr.foot td{background:#f3f3ef;font-weight:600;}
 }
 #print-head{display:none;} @media print{#print-head{display:block;margin-bottom:6px;}}
 </style>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#c0392b">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="تيما">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="icon-192.png">
+<script>if("serviceWorker" in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}));</script>
 </head>
 <body>
 <div class="wrap">

@@ -109,7 +109,7 @@ tr.foot td{background:#f3f3ef;font-weight:600;}
         <div class="row">
           <label class="f">من<input type="date" id="a-from"></label>
           <label class="f">لحد<input type="date" id="a-to"></label>
-          <label class="f">الحالة<select id="a-st"><option value="confirmed">مستني اعتماد</option><option value="">الكل</option><option value="approved">معتمد</option></select></label>
+          <label class="f">الحالة<select id="a-st"><option value="reviewed">مستني اعتماد</option><option value="confirmed">مستني الإقليمي</option><option value="">الكل</option><option value="approved">معتمد</option></select></label>
           <button class="btn" id="a-go">اعرض</button>
           <button class="btn sec" id="a-all" disabled>اعتماد كل المعروض</button>
         </div>
@@ -322,7 +322,7 @@ $("r-xlsx").onclick = () => {
 
 // آخر ميعاد لاعتماد المحاسب: 9 الصبح بعد يوم من أول إيميل (9 الصبح) بعد تأكيد المشرف
 function apDeadline(d) {
-  const c = d.confirmed_at?.toDate ? d.confirmed_at.toDate() : null;
+  const c = d.reviewed_at?.toDate ? d.reviewed_at.toDate() : null; // الميعاد بيبدأ من مراجعة الإقليمي
   if (!c) return null;
   const t = new Date(c); t.setHours(9, 0, 0, 0);
   if (c >= t) t.setDate(t.getDate() + 1);
@@ -335,6 +335,7 @@ function apState(d) {
     const at = d.approved_at?.toDate ? d.approved_at.toDate() : null;
     return `<span class="pill p-ok">معتمد</span>${dl && at && at > dl ? ` <span class="pill p-late">اتأخر</span>` : ""}`;
   }
+  if (d.status === "confirmed") return `<span class="pill p-wait">مستني الإقليمي</span>`;
   if (!dl) return `<span class="pill p-wait">مستني</span>`;
   return new Date() > dl ? `<span class="pill p-late">فات الميعاد</span>` : `<span class="pill p-wait">مستني — لحد ${fmt(dl)}</span>`;
 }
@@ -348,19 +349,20 @@ $("a-go").onclick = async () => {
     $("a-list").innerHTML = A.length ? A.map((d, i) => {
       const e = Object.values(d.entries || {}), reps = e.filter(x => x.rep).length, sup = e.filter(x => x.by === "sup").length;
       return `<tr><td>${esc(d.site)}</td><td>${DAYN[new Date(d.date + "T00:00").getDay()]} ${d.date}</td><td>${d.counts?.present ?? ""}</td><td>${d.counts?.absent ?? ""}</td><td>${reps}</td><td>${sup}</td>
-        <td class="muted">${esc(d.confirmed_email || "")}${d.late ? ` <span class="pill p-late">متأخر</span>` : ""}</td>
+        <td class="muted">${esc(d.confirmed_email || "")}${d.late ? ` <span class="pill p-late">متأخر</span>` : ""}${d.reviewed_email ? `<br>راجعه: ${esc(d.reviewed_email)}${d.review_late ? ` <span class="pill p-late">متأخر</span>` : ""}` : ""}</td>
         <td>${apState(d)}</td>
-        <td><button class="btn sec small" data-view="${i}">تفاصيل</button> ${d.status === "approved" ? `<button class="btn sec small" data-un="${i}">إلغاء الاعتماد</button>` : `<button class="btn small" data-ap="${i}">اعتماد</button>`}</td></tr>`;
+        <td><button class="btn sec small" data-view="${i}">تفاصيل</button> ${d.status === "approved" ? `<button class="btn sec small" data-un="${i}">إلغاء الاعتماد</button>` : (d.status === "reviewed" || S.role === "admin") ? `<button class="btn small" data-ap="${i}">اعتماد</button>` : ""}</td></tr>`;
     }).join("") : `<tr><td colspan="9" class="muted">مفيش.</td></tr>`;
-    $("a-all").disabled = !A.some(d => d.status !== "approved");
+    $("a-all").disabled = !A.some(canAp);
     hide($("a-msg"));
   } catch (e) { show($("a-msg"), "err", e.message); }
 };
+const canAp = d => d.status === "reviewed" || (S.role === "admin" && d.status === "confirmed");
 async function setStatus(d, approve) {
   const u = auth.currentUser;
   await updateDoc(doc(db, "att_days", d.id), approve
     ? { status: "approved", approved_by: u.uid, approved_email: u.email || "", approved_at: serverTimestamp() }
-    : { status: "confirmed" });
+    : { status: d.reviewed_by ? "reviewed" : "confirmed" });
 }
 $("a-list").onclick = async e => {
   const t = e.target;
@@ -374,11 +376,11 @@ $("a-list").onclick = async e => {
     return;
   }
   const i = t.dataset.ap ?? t.dataset.un; if (i === undefined) return;
-  if (t.dataset.un && !confirm("تلغي الاعتماد؟ المشرف هيقدر يعدّل اليوم تاني.")) return;
+  if (t.dataset.un && !confirm("تلغي الاعتماد؟ الإقليمي هيقدر يعدّل اليوم تاني.")) return;
   try { await setStatus(A[+i], !!t.dataset.ap); $("a-go").click(); } catch (er) { show($("a-msg"), "err", "مااتحفظش: " + er.message); }
 };
 $("a-all").onclick = async () => {
-  const pend = A.filter(d => d.status !== "approved");
+  const pend = A.filter(canAp);
   if (!confirm(`اعتماد ${pend.length} يوم؟`)) return;
   try { for (const d of pend) await setStatus(d, true); show($("a-msg"), "ok", `اتعتمد ${pend.length} يوم.`); $("a-go").click(); }
   catch (er) { show($("a-msg"), "err", er.message); }

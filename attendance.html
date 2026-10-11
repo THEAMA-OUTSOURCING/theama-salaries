@@ -251,7 +251,8 @@ function hide(el) { el.className = "msg"; el.textContent = ""; }
 const pad = n => String(n).padStart(2, "0");
 const ymd = d => d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
 
-const S = { sites: [], site: null, date: null, roster: [], pages: [], day: null, choice: {}, unsubPages: null, unsubDay: null, plan: {}, lateCount: 0, pool: [], rep: {}, removals: [], unsubRoster: null, unsubPool: null, unsubRem: null, newWorkers: [], unsubNew: null };
+const REGIONALS = ["rbh@theama-egy.com", "ralx@theama-egy.com", "rdlt@theama-egy.com"]; // المديرين الإقليميين: مرحلة مراجعة بعد المشرف وقبل المحاسب
+const S = { regional: false, admin: false, sites: [], site: null, date: null, roster: [], pages: [], day: null, choice: {}, unsubPages: null, unsubDay: null, plan: {}, lateCount: 0, pool: [], rep: {}, removals: [], unsubRoster: null, unsubPool: null, unsubRem: null, newWorkers: [], unsubNew: null };
 
 // ===== العدد المطلوب من شيت الاحتياج (نفس حساب صفحة الإدارة) =====
 const pnorm = s => String(s ?? "").replace(/\s+/g, " ").trim();
@@ -295,7 +296,7 @@ async function loadLate() {
   try {
     const snap = await getDocs(query(collection(db, "att_days"), where("site", "==", S.site)));
     const month = S.date.slice(0, 7);
-    snap.forEach(d => { const x = d.data(); if (x.late && x.date?.startsWith(month) && x.date !== S.date) S.lateCount++; });
+    snap.forEach(d => { const x = d.data(); if ((S.regional ? x.review_late : x.late) && x.date?.startsWith(month) && x.date !== S.date) S.lateCount++; });
   } catch (e) { S.lateCount = 0; }
 }
 const ORD = ["الأولى", "التانية", "التالتة", "الرابعة", "الخامسة", "السادسة", "السابعة", "التامنة", "التاسعة", "العاشرة"];
@@ -316,6 +317,8 @@ onAuthStateChanged(auth, async user => {
   if (!user) { $("login").classList.remove("hidden"); return; }
   let claims = {};
   try { claims = (await user.getIdTokenResult()).claims || {}; } catch (e) {}
+  S.admin = claims.role === "admin";
+  S.regional = REGIONALS.includes((user.email || "").toLowerCase());
   if (claims.role === "admin") S.sites = ATT_SITES;
   else if (claims.role === "supervisor" && Array.isArray(claims.sites) && claims.sites.length) S.sites = claims.sites;
   else { $("denied").classList.remove("hidden"); return; }
@@ -371,8 +374,10 @@ async function openDay() {
       Object.entries(S.day.entries || {}).forEach(([c, e]) => { fromSaved[c] = e.s; if (e.rep && !S.rep[c]) S.rep[c] = e.rep; });
       S.choice = { ...fromSaved, ...S.choice };
       const t = S.day.confirmed_at?.toDate ? S.day.confirmed_at.toDate().toLocaleString("ar-EG") : "";
-      if (S.day.status === "approved") show($("day-state"), "ok", "اليوم ده اتعتمد من HR، ومينفعش يتعدل.");
-      else show($("day-state"), "ok", `اليوم ده متأكد${t ? " — " + t : ""}${S.day.late ? " (متأخر)" : ""}. تقدر تعدّل وتأكد تاني لحد ما HR تعتمده.`);
+      const rt = S.day.reviewed_at?.toDate ? S.day.reviewed_at.toDate().toLocaleString("ar-EG") : "";
+      if (S.day.status === "approved") show($("day-state"), "ok", "اليوم ده اتعتمد من المحاسب، ومينفعش يتعدل.");
+      else if (S.day.status === "reviewed") show($("day-state"), "ok", `الإقليمي راجع اليوم ده (${esc(S.day.reviewed_email || "")}${rt ? " — " + rt : ""})${S.day.review_late ? " (متأخر)" : ""}. ` + (S.regional || S.admin ? "تقدر تعدّل وتراجع تاني لحد ما المحاسب يعتمده." : "مستني اعتماد المحاسب، ولو فيه تعديل كلّم الإقليمي."));
+      else show($("day-state"), "ok", `المشرف أكد اليوم ده${t ? " — " + t : ""}${S.day.late ? " (متأخر)" : ""}. ` + (S.regional ? "راجعه وأكد عشان يروح للمحاسب." : "مستني مراجعة الإقليمي، وتقدر تعدّل لحد ما يراجعه."));
     }
     render();
   }, () => {});
@@ -400,7 +405,7 @@ async function compress(file) {
 async function onFiles(e) {
   const files = [...e.target.files]; e.target.value = "";
   if (!files.length) return;
-  if (S.day?.status === "approved") return show($("up-msg"), "err", "اليوم ده اتعتمد، مينفعش يترفعله صور.");
+  if (lockedForMe()) return show($("up-msg"), "err", S.day?.status === "approved" ? "اليوم ده اتعتمد، مينفعش يترفعله صور." : "الإقليمي راجع اليوم ده، مينفعش يترفعله صور. كلّمه لو فيه تعديل.");
   const u = auth.currentUser;
   let ok = 0;
   for (let i = 0; i < files.length; i++) {
@@ -466,6 +471,11 @@ function aiState() {
 }
 function needsReview(r) { return !r || r.s === "U" || r.conf === "L" || r.match === "fuzzy" || r.match === "handwritten"; }
 
+// اليوم مقفول عليّا؟ بعد اعتماد المحاسب على الكل، وبعد مراجعة الإقليمي على المشرف
+function lockedForMe() {
+  const st = S.day?.status;
+  return st === "approved" || (st === "reviewed" && !S.regional && !S.admin);
+}
 function render() {
   const busy = S.pages.filter(p => p.status === "pending" || p.status === "reading").length;
   $("pages").innerHTML = S.pages.map(p => {
@@ -510,7 +520,7 @@ function render() {
       : r.conf === "L" ? "القراءة مش أكيدة" : "";
     const aiTxt = r ? (r.s === "P" ? "قرا: حاضر" : r.s === "A" ? `قرا: غايب${r.word ? " (" + esc(r.word) + ")" : ""}` : "قرا: مش واضح") : "";
     const note = r?.note ? ` — ملاحظة: ${esc(r.note)}` : "";
-    const ro = S.day?.status === "approved" ? "disabled" : "";
+    const ro = lockedForMe() ? "disabled" : "";
     const roP = ro || (blocked ? "disabled" : "");
     return `<div class="w ${!r ? "missing" : flag ? "flag" : ""}">
       <div class="nm"><b>${esc(w.name)}</b><small>${esc(aiTxt)}${note}${why ? ` · <span style="color:#8a5a10">${esc(why)}</span>` : ""}${blocked ? ` · <span style="color:#a32d2d">الحضور مقفول لحد ما الفيش يترفع</span>` : ""}</small></div>
@@ -552,7 +562,8 @@ function render() {
   if (S.over.length) msgs.push("الحاضرين عدّوا العدد المطلوب: " + S.over.map(o => `${o.job} ${fmt(o.n)} والمطلوب ${fmt(o.plan)}`).join("، ") + ". حدد مين اللي مش هيتحسب (علّم عليه غياب).");
   if (msgs.length) show($("checks"), "warn", msgs.join("\n")); else hide($("checks"));
   const btn = $("confirm");
-  btn.disabled = open > 0 || busy > 0 || S.day?.status === "approved";
+  btn.textContent = S.regional ? "مراجعة الإقليمي وتأكيد" : "تأكيد الحضور";
+  btn.disabled = open > 0 || busy > 0 || lockedForMe();
   btn.textContent = open > 0 ? `فاضل ${fmt(open)} عامل محتاجين قرار` : busy ? "استنى لحد ما الصور تتقري" : S.over.length ? "العدد أكتر من المطلوب" : (S.day ? "تأكيد التعديل" : "تأكيد الحضور");
 }
 
@@ -585,20 +596,28 @@ $("confirm").addEventListener("click", async () => {
   }
   const late = new Date() > deadlineOf(S.date);
   const nth = S.lateCount + 1;
-  if (late && !S.day?.late && !confirm(`اتأخرت في رفع حضور يوم ${S.date}.\nدي المرة ${ordinal(nth)} الشهر ده.\nالتأخير بيتسجل وبيأثر على تقييمك وراتبك.\n\nتأكد الحضور؟`)) return;
+  if (late && !(S.regional ? S.day?.review_late : S.day?.late) && !confirm(`اتأخرت في رفع حضور يوم ${S.date}.\nدي المرة ${ordinal(nth)} الشهر ده.\nالتأخير بيتسجل وبيأثر على تقييمك وراتبك.\n\nتأكد الحضور؟`)) return;
   if (!late && !confirm(`تأكيد حضور ${S.site} يوم ${S.date}:\nحاضر ${P} — غايب ${A}`)) return;
   $("confirm").disabled = true;
   try {
-    await setDoc(doc(db, "att_days", S.site + "__" + S.date), {
-      site: S.site, date: S.date, status: "confirmed", entries,
+    const base = {
+      site: S.site, date: S.date, entries,
       counts: { present: P, absent: A, total: S.roster.length },
       pages: S.pages.filter(p => p.status === "done").map(p => p.id),
-      late: late || !!S.day?.late,
-      confirmed_by: u.uid, confirmed_email: u.email || "", confirmed_at: serverTimestamp()
-    });
+    };
+    if (S.regional) {
+      // الإقليمي: مراجعة (لو المشرف مارفعش، الإقليمي بيرفع ويراجع مرة واحدة)
+      const sup = S.day?.confirmed_at ? { late: !!S.day.late, confirmed_by: S.day.confirmed_by, confirmed_email: S.day.confirmed_email || "", confirmed_at: S.day.confirmed_at }
+        : { late, confirmed_by: u.uid, confirmed_email: u.email || "", confirmed_at: serverTimestamp() };
+      await setDoc(doc(db, "att_days", S.site + "__" + S.date), { ...base, ...sup, status: "reviewed",
+        review_late: late || !!S.day?.review_late, reviewed_by: u.uid, reviewed_email: u.email || "", reviewed_at: serverTimestamp() });
+    } else {
+      await setDoc(doc(db, "att_days", S.site + "__" + S.date), { ...base, status: "confirmed",
+        late: late || !!S.day?.late, confirmed_by: u.uid, confirmed_email: u.email || "", confirmed_at: serverTimestamp() });
+    }
     show($("c-msg"), "ok", "اتأكد الحضور ✓");
   } catch (err) {
-    show($("c-msg"), "err", "ماتأكدش: " + (err.code === "permission-denied" ? "مش مسموح (يمكن اليوم اتعتمد)." : err.message));
+    show($("c-msg"), "err", "ماتأكدش: " + (err.code === "permission-denied" ? "مش مسموح (يمكن اليوم اتراجع أو اتعتمد)." : err.message));
   }
   $("confirm").disabled = false;
 });
@@ -714,7 +733,7 @@ function candidates(q, except, limit = 6) {
     .sort((a, b) => b.sc - a.sc).slice(0, limit).map(x => x.p);
 }
 function repBlock(w, r) {
-  const ro = S.day?.status === "approved";
+  const ro = lockedForMe();
   const cur = S.rep[w.code];
   if (cur) return `<div class="rep">البديل: <span class="chip sel">✓ ${esc(cur.name)}</span>${ro ? "" : ` <button class="btn sec small" data-repclear="${w.code}">تغيير</button>`}</div>`;
   if (ro) return "";

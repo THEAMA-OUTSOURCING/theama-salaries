@@ -91,7 +91,7 @@ h2{font-size:15px;font-weight:600;margin-bottom:8px;}
   <div id="app" class="hidden">
     <div class="row" style="justify-content:space-between;margin-bottom:10px;">
       <div><h1>تسجيل الحضور</h1><div class="muted" id="who"></div></div>
-      <div class="row"><a href="index.html" class="btn sec small" style="text-decoration:none;">البوابة</a><button class="btn sec small" id="logout">خروج</button></div>
+      <div class="row"><a href="report.html" class="btn sec small" style="text-decoration:none;">التقارير</a><a href="index.html" class="btn sec small" style="text-decoration:none;">البوابة</a><button class="btn sec small" id="logout">خروج</button></div>
     </div>
 
     <div class="card">
@@ -566,7 +566,7 @@ $("confirm").addEventListener("click", async () => {
     const s = S.choice[w.code] ?? (r && !needsReview(r) ? r.s : null);
     if (s !== "P" && s !== "A") return show($("c-msg"), "err", "فيه عمال لسه محتاجين قرار.");
     if (s === "P") P++; else A++;
-    entries[w.code] = { s, ai: r ? r.s : "", by: S.choice[w.code] && (!r || S.choice[w.code] !== r.s) ? "sup" : "ai", note: r?.note || "", page: r?.page || "" };
+    entries[w.code] = { name: w.name, nid: w.nid || "", job: w.job, type: w.type, s, ai: r ? r.s : "", by: S.choice[w.code] && (!r || S.choice[w.code] !== r.s) ? "sup" : "ai", note: r?.note || "", page: r?.page || "" };
     if (s === "A" && S.rep[w.code]) entries[w.code].rep = S.rep[w.code];
   }
   if (S.over.length) {

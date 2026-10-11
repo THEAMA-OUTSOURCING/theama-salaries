@@ -174,7 +174,7 @@ onAuthStateChanged(auth, async user => {
   $("who").textContent = user.email;
   document.querySelectorAll(".office-only").forEach(e => e.classList.toggle("hidden", !S.office));
   document.querySelectorAll(".admin-only").forEach(e => e.classList.toggle("hidden", c.role !== "admin"));
-  $("tab-approve").classList.toggle("hidden", !["admin", "hr"].includes(c.role));
+  $("tab-approve").classList.toggle("hidden", !["admin", "accountant"].includes(c.role));
   $("r-site").innerHTML = (S.office ? `<option value="*">كل المواقع</option>` : "") + S.sites.map(s => `<option>${esc(s)}</option>`).join("");
   const now = new Date(), m = ymd(now).slice(0, 7);
   $("r-month").value = now.getDate() > 20 ? ymd(new Date(now.getFullYear(), now.getMonth() + 1, 1)).slice(0, 7) : m;
@@ -320,6 +320,24 @@ $("r-xlsx").onclick = () => {
   XLSX.writeFile(wb, `حضور ${multi ? "كل المواقع" : R.site} ${R.from} - ${R.to}.xlsx`);
 };
 
+// آخر ميعاد لاعتماد المحاسب: 9 الصبح بعد يوم من أول إيميل (9 الصبح) بعد تأكيد المشرف
+function apDeadline(d) {
+  const c = d.confirmed_at?.toDate ? d.confirmed_at.toDate() : null;
+  if (!c) return null;
+  const t = new Date(c); t.setHours(9, 0, 0, 0);
+  if (c >= t) t.setDate(t.getDate() + 1);
+  t.setDate(t.getDate() + 1);
+  return t;
+}
+function apState(d) {
+  const dl = apDeadline(d), fmt = x => x.toLocaleString("ar-EG", { weekday: "short", day: "numeric", month: "numeric", hour: "numeric" });
+  if (d.status === "approved") {
+    const at = d.approved_at?.toDate ? d.approved_at.toDate() : null;
+    return `<span class="pill p-ok">معتمد</span>${dl && at && at > dl ? ` <span class="pill p-late">اتأخر</span>` : ""}`;
+  }
+  if (!dl) return `<span class="pill p-wait">مستني</span>`;
+  return new Date() > dl ? `<span class="pill p-late">فات الميعاد</span>` : `<span class="pill p-wait">مستني — لحد ${fmt(dl)}</span>`;
+}
 // ===== الاعتماد =====
 let A = [];
 $("a-go").onclick = async () => {
@@ -331,7 +349,7 @@ $("a-go").onclick = async () => {
       const e = Object.values(d.entries || {}), reps = e.filter(x => x.rep).length, sup = e.filter(x => x.by === "sup").length;
       return `<tr><td>${esc(d.site)}</td><td>${DAYN[new Date(d.date + "T00:00").getDay()]} ${d.date}</td><td>${d.counts?.present ?? ""}</td><td>${d.counts?.absent ?? ""}</td><td>${reps}</td><td>${sup}</td>
         <td class="muted">${esc(d.confirmed_email || "")}${d.late ? ` <span class="pill p-late">متأخر</span>` : ""}</td>
-        <td>${d.status === "approved" ? `<span class="pill p-ok">معتمد</span>` : `<span class="pill p-wait">مستني</span>`}</td>
+        <td>${apState(d)}</td>
         <td><button class="btn sec small" data-view="${i}">تفاصيل</button> ${d.status === "approved" ? `<button class="btn sec small" data-un="${i}">إلغاء الاعتماد</button>` : `<button class="btn small" data-ap="${i}">اعتماد</button>`}</td></tr>`;
     }).join("") : `<tr><td colspan="9" class="muted">مفيش.</td></tr>`;
     $("a-all").disabled = !A.some(d => d.status !== "approved");

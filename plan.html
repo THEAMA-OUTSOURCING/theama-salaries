@@ -1092,15 +1092,18 @@ $("w-file")?.addEventListener("change", async e => {
     const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: "", raw: false });
     const col = (r, ...names) => { for (const n of names) { const k = Object.keys(r).find(k => norm(k) === n); if (k !== undefined && norm(r[k])) return norm(r[k]); } return ""; };
     const byCode = Object.fromEntries(WS.base.map(w => [String(w.code).toUpperCase(), w]));
-    const problems = [];
+    const problems = []; let same = 0;
     rows.forEach((r, i) => {
-      const code = col(r, "الكود", "كود الموظف", "code").toUpperCase();
+      let code = col(r, "الكود", "كود الموظف", "code").toUpperCase();
+      // من غير كود: لو الرقم القومي موجود في الرواتب نجيب كوده ونعامله كتعديل
+      const nidIn = code ? "" : col(r, "الرقم القومي", "الرقم القومى").replace(/\D/g, "");
+      const known = nidIn ? WS.base.find(w => String(w.nid) === nidIn) : null;
+      if (known) code = String(known.code).toUpperCase();
       if (!code) {
-        const nid = col(r, "الرقم القومي", "الرقم القومى").replace(/\D/g, ""), name = col(r, "الاسم");
+        const nid = nidIn, name = col(r, "الاسم");
         if (!nid && !name) return;
         const bad = nidCheck(nid); if (bad) { problems.push(`سطر ${i + 2}: ${name || nid} — ${bad}`); return; }
         if (!name) { problems.push(`سطر ${i + 2}: الاسم ناقص`); return; }
-        if (WS.base.some(w => w.nid === nid)) { problems.push(`سطر ${i + 2}: ${name} موجود في الرواتب — اكتب كوده`); return; }
         const tIn = col(r, "النوع", "نوع الوظيفة"), nt = TYPE_IN[arNorm(tIn)] || TYPE_IN[tIn], site = col(r, "الموقع"), job = col(r, "الوظيفة");
         if (!["اساسي", "موسمي", "يومية"].includes(nt)) { problems.push(`سطر ${i + 2}: النوع لازم أساسي أو موسمي أو يومية`); return; }
         if (!W_SITES.includes(site)) { problems.push(`سطر ${i + 2}: الموقع "${site}" مش من مواقع الحضور`); return; }
@@ -1114,13 +1117,19 @@ $("w-file")?.addEventListener("change", async e => {
       if (tRaw && !type) { problems.push(`سطر ${i + 2}: النوع "${tRaw}" مش معروف`); return; }
       const job = col(r, "الوظيفة") || cur.job, site = col(r, "الموقع") || cur.site;
       if (type !== "مشي" && !W_SITES.includes(site)) { problems.push(`سطر ${i + 2}: الموقع "${site}" مش من مواقع الحضور`); return; }
-      if (type === cur.type && job === cur.job && site === cur.site) return;
+      if (type === cur.type && job === cur.job && site === cur.site) { same++; return; }
       WS.pending.push({ w, cur, type, job, site, from: col(r, "ساري من") || today(), note: col(r, "ملاحظة") });
     });
+    // عمال على نفس المواقع في البوابة ومش في الشيت (مش بيتغيروا، للمعلومة بس)
+    const seen = new Set(rows.map(r => col(r, "الكود", "كود الموظف", "code").toUpperCase()).filter(Boolean));
+    rows.forEach(r => { const n = col(r, "الرقم القومي", "الرقم القومى").replace(/\D/g, ""); const k = n && WS.base.find(w => String(w.nid) === n); if (k) seen.add(String(k.code).toUpperCase()); });
+    const fileSites = new Set(rows.map(r => col(r, "الموقع")).filter(s => W_SITES.includes(s)));
+    const missing = WS.base.filter(w => { const c = current(w); return fileSites.has(c.site) && c.type !== "مشي" && !seen.has(String(w.code).toUpperCase()); });
+    const missNote = !missing.length ? "" : `\nتنبيه: ${fmt(missing.length)} عامل على ${[...fileSites].join(" / ")} في البوابة مش موجودين في الشيت ومش هيتغيروا — لو مشيوا اكتبهم بالنوع "مشي": ` + missing.slice(0, 10).map(w => `${w.code} ${w.name}`).join("، ") + (missing.length > 10 ? " …" : "");
     $("w-prev-list").innerHTML = WS.pendingNew.map(n => `<tr><td>جديد</td><td>${esc(n.name)}<div class="muted" style="direction:ltr;text-align:right">${esc(n.nid)}</div></td>
       <td>—</td><td><b>${esc(typeLabel(n.type))}</b> · ${esc(n.job)} · ${esc(n.site)}</td><td>من غير بطاقة</td></tr>`).join("") + WS.pending.map(p => `<tr><td>${esc(p.w.code)}</td><td>${esc(p.w.name)}</td>
       <td>${esc(typeLabel(p.cur.type))} · ${esc(p.cur.job)} · ${esc(p.cur.site)}</td><td><b>${esc(typeLabel(p.type))}</b>${p.type !== "مشي" ? ` · ${esc(p.job)} · ${esc(p.site)}` : ""}</td><td>${esc(p.note)}</td></tr>`).join("");
-    show($("w-up-msg"), problems.length ? "warn" : "info", `${fmt(WS.pending.length)} تعديل و${fmt(WS.pendingNew.length)} عامل جديد جاهزين للحفظ.` + (problems.length ? `\n${problems.length} سطر فيهم مشكلة ومش هيتحفظوا:\n` + problems.slice(0, 15).join("\n") : ""));
+    show($("w-up-msg"), problems.length ? "warn" : "info", `${fmt(WS.pending.length)} تعديل و${fmt(WS.pendingNew.length)} عامل جديد جاهزين للحفظ.` + (same ? `\n${fmt(same)} عامل بياناتهم مطابقة للبوابة ومش محتاجين تعديل.` : "") + missNote + (problems.length ? `\n${problems.length} سطر فيهم مشكلة ومش هيتحفظوا:\n` + problems.slice(0, 15).join("\n") : ""));
     $("w-up-msg").style.whiteSpace = "pre-line";
     if (WS.pending.length || WS.pendingNew.length) $("w-preview").classList.remove("hidden");
   } catch (err) { show($("w-up-msg"), "err", "مش قادر أقرا الملف: " + err.message); }

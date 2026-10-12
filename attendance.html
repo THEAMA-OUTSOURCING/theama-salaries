@@ -57,6 +57,11 @@ h2{font-size:15px;font-weight:600;margin-bottom:8px;}
 .center{max-width:380px;margin:50px auto;}
 .viewer{position:fixed;inset:0;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;z-index:50;padding:10px;}
 .viewer img{max-width:100%;max-height:100%;}
+.viewer{flex-direction:column;gap:8px;}
+.viewer-cap{color:#fff;font-weight:700;text-align:center;}
+img[data-zoom]{cursor:zoom-in;}
+.fm-pg{position:relative;}
+.fm-pg button{position:absolute;top:4px;left:4px;background:rgba(0,0,0,.6);color:#fff;border:0;border-radius:50%;width:26px;height:26px;font-size:14px;line-height:26px;padding:0;cursor:pointer;}
 .sticky{position:sticky;bottom:0;background:#f5f5f0;padding:10px 0 4px;}
 .rep{padding:4px 6px 10px 6px;border-bottom:1px solid #f0efe9;background:#fffdfb;font-size:13px;}
 .rep .chip{display:inline-flex;align-items:center;gap:6px;border:1px solid #ddd;border-radius:999px;padding:3px 10px;background:#fff;margin:3px 0;cursor:pointer;font-size:13px;}
@@ -180,7 +185,7 @@ h2{font-size:15px;font-weight:600;margin-bottom:8px;}
     </div>
   </div>
 </div>
-<div class="viewer hidden" id="viewer"><img id="viewer-img" alt="صورة الكشف"></div>
+<div class="viewer hidden" id="viewer"><div class="viewer-cap" id="viewer-cap"></div><img id="viewer-img" alt="صورة"><div class="muted" style="color:#ccc;">دوس في أي حتة للقفل</div></div>
 <div class="modal hidden" id="fm">
   <div class="box">
     <div class="row" style="justify-content:space-between;margin-bottom:8px;"><h2 id="fm-title" style="margin:0;">رفع الفيش</h2><button class="btn sec small" id="fm-close">قفل</button></div>
@@ -201,12 +206,12 @@ h2{font-size:15px;font-weight:600;margin-bottom:8px;}
     <div class="row" style="align-items:stretch;">
       <div class="grow" style="border:1px solid #e5e5e5;border-radius:12px;padding:10px;text-align:center;">
         <b>1. وش البطاقة</b>
-        <img id="idm-front-img" class="hidden" alt="وش البطاقة" style="width:100%;max-height:110px;object-fit:contain;margin-top:6px;">
+        <img id="idm-front-img" class="hidden" data-zoom alt="وش البطاقة" title="دوس تكبّر" style="width:100%;max-height:200px;object-fit:contain;margin-top:6px;">
         <div class="row" style="justify-content:center;margin-top:6px;"><label class="btn sec small" for="idm-front-cam">صوّر</label><label class="btn sec small" for="idm-front-file">من المعرض</label></div>
       </div>
       <div class="grow" style="border:1px solid #e5e5e5;border-radius:12px;padding:10px;text-align:center;">
         <b>2. ضهر البطاقة</b>
-        <img id="idm-back-img" class="hidden" alt="ضهر البطاقة" style="width:100%;max-height:110px;object-fit:contain;margin-top:6px;">
+        <img id="idm-back-img" class="hidden" data-zoom alt="ضهر البطاقة" title="دوس تكبّر" style="width:100%;max-height:200px;object-fit:contain;margin-top:6px;">
         <div class="row" style="justify-content:center;margin-top:6px;"><label class="btn sec small" for="idm-back-cam">صوّر</label><label class="btn sec small" for="idm-back-file">من المعرض</label></div>
       </div>
     </div>
@@ -435,9 +440,18 @@ $("pages").addEventListener("click", async e => {
     return;
   }
   const img = e.target.closest("img[data-view]");
-  if (img) { $("viewer-img").src = img.src; $("viewer").classList.remove("hidden"); }
+  if (img) { $("viewer-cap").textContent = ""; $("viewer-img").src = img.src; $("viewer").classList.remove("hidden"); }
 });
 $("viewer").addEventListener("click", () => $("viewer").classList.add("hidden"));
+// تكبير صور البطاقة والفيش قبل الإرسال، مع اسم العامل فوق الصورة
+document.addEventListener("click", e => {
+  const img = e.target.closest("img[data-zoom]"); if (!img || !img.src) return;
+  const box = img.closest(".box");
+  const title = box?.querySelector("h2")?.textContent || "";
+  const who = box?.id === "idm" || img.id.startsWith("idm") ? ($("idm-name")?.textContent || "") : "";
+  $("viewer-cap").textContent = [title, who, img.alt].filter(Boolean).join(" — ");
+  $("viewer-img").src = img.src; $("viewer").classList.remove("hidden");
+});
 
 // ===== العرض =====
 // صف مكتوب بخط اليد: هل هو عامل موجود في الكشف؟ (بالرقم القومي أو بالاسم)
@@ -937,9 +951,17 @@ async function onFiche(e) {
     if (FM.imgs.length >= 3) break;
     try { FM.imgs.push(await compressCard(f)); } catch (err) { show($("fm-msg"), "err", err.message); }
   }
-  $("fm-thumbs").innerHTML = FM.imgs.map(b => `<img src="data:image/jpeg;base64,${b}" style="height:90px;border:1px solid #ddd;border-radius:8px;">`).join("");
+  renderFmThumbs();
+}
+function renderFmThumbs() {
+  $("fm-thumbs").innerHTML = FM.imgs.map((b, i) => `<div class="fm-pg"><img src="data:image/jpeg;base64,${b}" data-zoom alt="صفحة ${i + 1}" title="دوس تكبّر" style="height:160px;border:1px solid #ddd;border-radius:8px;"><button type="button" data-rm="${i}" title="شيل الصفحة">✕</button></div>`).join("")
+    + (FM.imgs.length ? `<div class="muted" style="width:100%;">دوس على الصورة تكبّرها وتتأكد إنها بتاعة العامل ده، ولو غلط شيلها بـ ✕.</div>` : "");
   $("fm-send").disabled = !FM.imgs.length;
 }
+$("fm-thumbs").addEventListener("click", e => {
+  const rm = e.target.closest("[data-rm]"); if (!rm) return;
+  e.stopPropagation(); FM.imgs.splice(+rm.dataset.rm, 1); renderFmThumbs();
+});
 $("fm-cam").addEventListener("change", onFiche);
 $("fm-file").addEventListener("change", onFiche);
 $("fm-send").addEventListener("click", async () => {

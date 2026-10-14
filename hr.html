@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>اعتماد الحالات - Theama</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&display=swap">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'IBM Plex Sans Arabic','Segoe UI',Tahoma,sans-serif;background:#f5f5f0;color:#222;padding:12px;font-size:14px;line-height:1.6;}
+input,button,select,textarea{font-family:inherit;font-size:14px;}
+input,select,textarea{padding:8px 10px;border:1px solid #ddd;border-radius:9px;background:#fff;color:#222;}
+.wrap{max-width:1100px;margin:0 auto;}
+.card{background:#fff;border:1px solid #e5e5e5;border-radius:14px;padding:14px 16px;margin-bottom:12px;}
+h1{font-size:19px;font-weight:600;} h2{font-size:15px;font-weight:600;margin-bottom:8px;}
+.muted{color:#888;font-size:13px;}
+.row{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;}
+label.f{display:flex;flex-direction:column;gap:3px;font-size:12px;color:#777;}
+.btn{padding:8px 16px;font-weight:500;cursor:pointer;background:#c0392b;color:#fff;border:none;border-radius:9px;}
+.btn:disabled{opacity:.5;cursor:not-allowed;} .btn.sec{background:#f5f5f0;color:#444;border:1px solid #ddd;} .btn.ok{background:#3b6d11;} .btn.small{padding:4px 10px;font-size:12px;}
+.msg{padding:9px 12px;border-radius:9px;font-size:13px;margin-top:10px;display:none;}
+.msg.show{display:block;} .msg.ok{background:#eaf3de;color:#3b6d11;} .msg.err{background:#fcebeb;color:#a32d2d;} .msg.info{background:#eef4fb;color:#185fa5;}
+.hidden{display:none !important;}
+.center{max-width:380px;margin:50px auto;}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:12px;}
+.ev{background:#fff;border:1px solid #e5e5e5;border-radius:14px;overflow:hidden;display:flex;flex-direction:column;}
+.ev .ph{height:220px;background:#f0efe9;display:flex;align-items:center;justify-content:center;cursor:zoom-in;}
+.ev .ph img{max-width:100%;max-height:100%;object-fit:contain;}
+.ev .bd{padding:10px 12px;flex:1;}
+.ev .nm{font-weight:600;font-size:15px;}
+.ev dl{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;font-size:13px;margin-top:6px;}
+.ev dt{color:#888;} .ev dd{margin:0;}
+.ev .ft{padding:10px 12px;border-top:1px solid #f0efe9;display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
+.pill{display:inline-block;padding:1px 9px;border-radius:999px;font-size:12px;font-weight:600;}
+.t-sick{background:#eef4fb;color:#185fa5;} .t-leave{background:#eaf3de;color:#3b6d11;} .t-resign{background:#fcebeb;color:#a32d2d;}
+.s-pending{background:#fff5de;color:#8a5a10;} .s-approved{background:#eaf3de;color:#3b6d11;} .s-rejected{background:#f0efe9;color:#666;}
+.warn{background:#fff5de;color:#8a5a10;border-radius:8px;padding:4px 8px;font-size:12px;margin-top:6px;}
+#zoom{position:fixed;inset:0;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;z-index:9;cursor:zoom-out;}
+#zoom img{max-width:96vw;max-height:96vh;}
+</style>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#c0392b">
+<link rel="icon" href="icon-192.png">
+</head>
+<body>
+<div class="wrap">
+  <div id="login" class="card center hidden">
+    <h2>اعتماد الحالات</h2>
+    <div style="display:flex;flex-direction:column;gap:8px;">
+      <input type="email" id="l-email" placeholder="الإيميل" dir="ltr">
+      <input type="password" id="l-pass" placeholder="الباسورد" dir="ltr">
+      <button class="btn" id="l-btn">دخول</button>
+    </div>
+    <div class="msg err" id="l-err"></div>
+  </div>
+  <div id="denied" class="card center hidden"><h2>الصفحة دي للـ HR والأدمن بس</h2><button class="btn sec" id="d-out" style="margin-top:10px;">خروج</button></div>
+
+  <div id="app" class="hidden">
+    <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:10px;">
+      <div><h1>اعتماد الحالات — الشرقية</h1><div class="muted" id="who"></div></div>
+      <div class="row"><a href="report.html" class="btn sec small" style="text-decoration:none;">تقارير الحضور</a><a href="index.html" class="btn sec small" style="text-decoration:none;">البوابة</a><button class="btn sec small" id="logout">خروج</button></div>
+    </div>
+    <div class="card">
+      <div class="row">
+        <label class="f">الحالة<select id="f-st"><option value="pending">مستني اعتماد</option><option value="approved">معتمد</option><option value="rejected">مرفوض</option><option value="">الكل</option></select></label>
+        <label class="f">النوع<select id="f-ty"><option value="">الكل</option><option value="sick">مرضي</option><option value="leave">إجازة</option><option value="resign">استقالة</option></select></label>
+        <label class="f">بحث<input id="f-q" placeholder="الاسم أو الكود أو الرقم القومي"></label>
+      </div>
+      <p class="muted" style="margin-top:8px;">الحالات دي جاية من تطبيق الشرقية على Drive وبتتحدث كل ساعة من سيرفر الشركة. بعد الاعتماد: الإجازة والمرضي بيظهروا في تقرير الحضور (ج / م) بدل الغياب، والاستقالة بتتحسب من تاريخ تسجيلها. <span id="sync"></span></p>
+      <div class="msg" id="msg"></div>
+    </div>
+    <div class="grid" id="list"></div>
+  </div>
+</div>
+<div id="zoom" class="hidden"><img id="zoom-img" alt=""></div>
+
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+import { getFirestore, collection, doc, getDoc, query, where, onSnapshot, updateDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+const app = initializeApp({
+  apiKey: "AIzaSyBscBbgFrEd76NjDgNPpymF1nmlvlpprdg",
+  authDomain: "theama-salaries.firebaseapp.com",
+  projectId: "theama-salaries",
+  storageBucket: "theama-salaries.firebasestorage.app",
+  messagingSenderId: "469549638177",
+  appId: "1:469549638177:web:4e5c1d4c055108312cb960"
+});
+const db = getFirestore(app), auth = getAuth(app);
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+function show(el, t, x) { el.className = "msg show " + t; el.textContent = x; }
+const TY = { sick: "مرضي", leave: "إجازة", resign: "استقالة" }, ST = { pending: "مستني اعتماد", approved: "معتمد", rejected: "مرفوض" };
+let ALL = [];
+
+$("l-btn").onclick = async () => { try { await signInWithEmailAndPassword(auth, $("l-email").value.trim(), $("l-pass").value); } catch (e) { show($("l-err"), "err", "الإيميل أو الباسورد غلط"); } };
+$("logout").onclick = () => signOut(auth); $("d-out").onclick = () => signOut(auth);
+onAuthStateChanged(auth, async user => {
+  ["login", "denied", "app"].forEach(i => $(i).classList.add("hidden"));
+  if (!user) return $("login").classList.remove("hidden");
+  let role = null; try { role = (await user.getIdTokenResult()).claims.role || null; } catch (e) {}
+  if (!["admin", "hr"].includes(role)) return $("denied").classList.remove("hidden");
+  $("who").textContent = user.email; $("app").classList.remove("hidden");
+  onSnapshot(query(collection(db, "hr_events"), where("source", "==", "sharqia_drive")), snap => {
+    ALL = snap.docs.map(d => ({ id: d.id, ...d.data() })); render();
+  }, err => show($("msg"), "err", "مش قادر أقرا الحالات: " + (err.code === "permission-denied" ? "محتاج تحديث الـ Rules (hr_events)." : err.message)));
+  try { const s = await getDoc(doc(db, "admin_tasks_status", "sharqia_sync")); const t = s.data()?.last_run?.toDate?.(); if (t) $("sync").textContent = "آخر تحديث: " + t.toLocaleString("ar-EG"); } catch (e) {}
+});
+["f-st", "f-ty"].forEach(i => $(i).onchange = render); $("f-q").oninput = render;
+
+function render() {
+  const st = $("f-st").value, ty = $("f-ty").value, q = $("f-q").value.trim();
+  const list = ALL.filter(e => (!st || e.status === st) && (!ty || e.type === ty) && (!q || [e.name, e.code, e.nid].some(x => String(x || "").includes(q))))
+    .sort((a, b) => (a.status === "pending" ? 0 : 1) - (b.status === "pending" ? 0 : 1) || String(b.entry_date).localeCompare(String(a.entry_date)));
+  $("list").innerHTML = list.length ? list.map(e => `
+    <div class="ev">
+      <div class="ph" ${e.image ? `data-zoom="${e.id}"` : ""}>${e.image ? `<img src="${e.image}" alt="">` : `<span class="muted">${e.type === "leave" ? "الإجازة مالهاش صورة" : e.image_missing ? "الصورة مش لاقيها على Drive" : "مفيش صورة"}</span>`}</div>
+      <div class="bd">
+        <div class="row" style="justify-content:space-between;align-items:center;"><span class="nm">${esc(e.name)}</span><span><span class="pill t-${e.type}">${TY[e.type]}</span> <span class="pill s-${e.status}">${ST[e.status] || e.status}</span></span></div>
+        <dl>
+          <dt>الكود</dt><dd>${esc(e.code)}${e.nid ? ` — <span dir="ltr">${esc(e.nid)}</span>` : ""}</dd>
+          <dt>المكان</dt><dd>${esc(e.loc)} — ${esc(e.job)}</dd>
+          ${e.type === "resign" ? `<dt>السبب</dt><dd>${esc(e.reason)}</dd><dt>من تاريخ</dt><dd>${esc(e.entry_date)} (يوم التسجيل)</dd>`
+            : `<dt>من</dt><dd>${esc(e.from)} لحد ${esc(e.to)} — ${esc(e.days)} يوم</dd>`}
+          <dt>اتسجل</dt><dd>${esc(e.entry_date)} — ${esc(e.by_email)}</dd>
+          ${e.decided_email ? `<dt>القرار</dt><dd>${esc(e.decided_email)}${e.note ? ` — ${esc(e.note)}` : ""}</dd>` : ""}
+        </dl>
+        ${e.changed ? `<div class="warn">السطر اتعدل في الشيت بعد القرار — راجعه</div>` : ""}
+        ${e.deleted_in_sheet ? `<div class="warn">السطر اتمسح من الشيت</div>` : ""}
+      </div>
+      <div class="ft">${e.status === "pending" || e.changed
+        ? `<input placeholder="ملاحظة (اختياري)" data-note="${e.id}" style="flex:1;min-width:120px;"><button class="btn ok small" data-ap="${e.id}">اعتماد</button><button class="btn sec small" data-rj="${e.id}">رفض</button>`
+        : `<button class="btn sec small" data-back="${e.id}">رجّعها مستنية</button>`}</div>
+    </div>`).join("") : `<div class="card muted">مفيش حالات.</div>`;
+}
+$("list").onclick = async e => {
+  const z = e.target.closest("[data-zoom]");
+  if (z) { $("zoom-img").src = ALL.find(x => x.id === z.dataset.zoom).image; return $("zoom").classList.remove("hidden"); }
+  const id = e.target.dataset.ap || e.target.dataset.rj || e.target.dataset.back; if (!id) return;
+  const u = auth.currentUser, note = document.querySelector(`[data-note="${id}"]`)?.value.trim() || "";
+  const ev = ALL.find(x => x.id === id);
+  let upd;
+  if (e.target.dataset.back) upd = { status: "pending", decided_by: null, decided_email: null, decided_at: null };
+  else {
+    const status = e.target.dataset.ap ? "approved" : "rejected";
+    if (status === "rejected" && !note && !confirm("ترفض من غير ملاحظة؟")) return;
+    upd = { status, note, decided_by: u.uid, decided_email: u.email || "", decided_at: serverTimestamp(), changed: false };
+    if (ev.changed && ev.changed_data) Object.assign(upd, ev.changed_data);   // القرار على آخر نسخة في الشيت
+  }
+  try { await updateDoc(doc(db, "hr_events", id), upd); show($("msg"), "ok", "اتحفظ."); }
+  catch (er) { show($("msg"), "err", "ماتحفظش: " + (er.code === "permission-denied" ? "محتاج تحديث الـ Rules (hr_events)." : er.message)); }
+};
+$("zoom").onclick = () => $("zoom").classList.add("hidden");
+</script>
+</body>
+</html>

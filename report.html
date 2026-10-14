@@ -31,7 +31,7 @@ table{border-collapse:collapse;font-size:12px;}
 th,td{border:1px solid #e5e5e5;padding:3px 5px;text-align:center;white-space:nowrap;}
 th{background:#2b2b2b;color:#fff;position:sticky;top:0;z-index:1;font-weight:500;}
 td.nm{text-align:right;} td.off,th.off{background:#fde9d9;} th.off{color:#a32d2d;}
-td.a{color:#a32d2d;font-weight:600;} td.unapp{background:#fffbea;}
+td.a{color:#a32d2d;font-weight:600;} td.lv{color:#185fa5;font-weight:600;} td.conf{outline:2px solid #e0a020;outline-offset:-2px;} td.unapp{background:#fffbea;}
 tr.foot td{background:#f3f3ef;font-weight:600;}
 .list td{padding:6px 8px;font-size:13px;} .list th{padding:6px 8px;font-size:13px;}
 .pill{display:inline-block;padding:1px 9px;border-radius:999px;font-size:12px;font-weight:600;}
@@ -70,7 +70,7 @@ tr.foot td{background:#f3f3ef;font-weight:600;}
   <div id="app" class="hidden">
     <div class="row noprint" style="justify-content:space-between;align-items:center;margin-bottom:10px;">
       <div><h1>تقارير الحضور</h1><div class="muted" id="who"></div></div>
-      <div class="row"><a href="index.html" class="btn sec small" style="text-decoration:none;">البوابة</a><button class="btn sec small" id="logout">خروج</button></div>
+      <div class="row"><a href="hr.html" id="go-hr" class="btn sec small hidden" style="text-decoration:none;">اعتماد حالات الشرقية</a><a href="upload.html" id="go-upload" class="btn sec small hidden" style="text-decoration:none;">رفع حضور إكسيل</a><a href="index.html" class="btn sec small" style="text-decoration:none;">البوابة</a><button class="btn sec small" id="logout">خروج</button></div>
     </div>
     <div class="tabs noprint">
       <button class="tab" data-tab="report" aria-selected="true">التقرير الشهري</button>
@@ -93,7 +93,7 @@ tr.foot td{background:#f3f3ef;font-weight:600;}
           <button class="btn sec" id="r-print" disabled><i class="ti ti-printer"></i> طباعة</button>
           <button class="btn sec office-only hidden" id="r-xlsx" disabled><i class="ti ti-file-spreadsheet"></i> إكسيل</button>
         </div>
-        <p class="muted" style="margin-top:6px;">1 = حاضر، غ = غايب، فاضي = مفيش حضور متأكد لليوم ده. الجمعة والعطلات متلوّنة، واللي اشتغل فيها بيتحسب إضافي. الخانات الصفرا = متأكدة من المشرف ولسه مااتعتمدتش.</p>
+        <p class="muted" style="margin-top:6px;">1 = حاضر، غ = غايب، فاضي = مفيش حضور متأكد لليوم ده. في المواقع المرفوعة إكسيل الرمز بيظهر زي ما هو: ج إجازة، م/ض مرضي، ر راحة، ق توقف، ن نص يوم، ورقم = ساعات (إضافي). في الشرقية: الإجازات والمرضي المعتمدين من الـ HR بيظهروا ج / م، والمستقيل «س» من يوم تسجيل الاستقالة، والخانة اللي عليها إطار برتقالي = تعارض (حالة معتمدة والشيت بيقول حاضر). الجمعة والعطلات متلوّنة، واللي اشتغل فيها بيتحسب إضافي. الخانات الصفرا = متأكدة من المشرف ولسه مااتعتمدتش.</p>
         <div class="msg" id="r-msg"></div>
       </div>
       <div class="card hidden" id="r-out">
@@ -151,6 +151,14 @@ const app = initializeApp({
 });
 const db = getFirestore(app), auth = getAuth(app);
 const ATT_SITES = ["فرع العامرية", "فرع العجمى", "مصنع العامرية", "دمنهور", "كفر الدوار", "المنصورة", "فرع طنطا", "طنطا مصنع"];
+// المواقع اللي حضورها بيترفع إكسيل (upload.html) — للمكتب بس حالياً
+const XL_SITES = ["قطامية", "ابوصير", "العامرية امداد", "اكتوبر امداد", "مدينة نصر امداد", "طنطا امداد", "الشرقية للدخان"];
+// خانة اليوم: 1 حاضر، غ غايب، أو الرمز زي ما هو (ج م ض ر ق ن 8 ...). p = قيمة الحضور (ن = نص يوم)
+function cellOf(e, app) {
+  if (e.s === "P") return { v: e.c || "1", p: e.c === "ن" ? 0.5 : 1, hrs: !!e.x, app };   // x = ساعات في يوم راحة (الإمداد) → إضافي
+  if (e.s === "A") return { v: "غ", p: 0, a: true, app };
+  return { v: e.c || "؟", p: 0, l: true, app };
+}
 const DAYN = ["الحد", "الاتنين", "التلات", "الأربع", "الخميس", "الجمعة", "السبت"];
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -168,13 +176,15 @@ onAuthStateChanged(auth, async user => {
   if (!user) return $("login").classList.remove("hidden");
   let c = {}; try { c = (await user.getIdTokenResult()).claims || {}; } catch (e) {}
   S.role = c.role;
-  if (["admin", "hr", "accountant"].includes(c.role)) { S.sites = ATT_SITES; S.office = true; }
+  if (["admin", "hr", "accountant"].includes(c.role)) { S.sites = [...ATT_SITES, ...XL_SITES]; S.office = true; }
   else if (c.role === "supervisor" && Array.isArray(c.sites) && c.sites.length) S.sites = c.sites;
   else return $("denied").classList.remove("hidden");
   $("who").textContent = user.email;
   document.querySelectorAll(".office-only").forEach(e => e.classList.toggle("hidden", !S.office));
   document.querySelectorAll(".admin-only").forEach(e => e.classList.toggle("hidden", c.role !== "admin"));
   $("tab-approve").classList.toggle("hidden", !["admin", "accountant"].includes(c.role));
+  $("go-upload").classList.toggle("hidden", c.role !== "admin");
+  $("go-hr").classList.toggle("hidden", !["admin", "hr"].includes(c.role));
   $("r-site").innerHTML = (S.office ? `<option value="*">كل المواقع</option>` : "") + S.sites.map(s => `<option>${esc(s)}</option>`).join("");
   const now = new Date(), m = ymd(now).slice(0, 7);
   $("r-month").value = now.getDate() > 20 ? ymd(new Date(now.getFullYear(), now.getMonth() + 1, 1)).slice(0, 7) : m;
@@ -242,6 +252,37 @@ function period() {
   return [ymd(new Date(y, m - 2, 21)), ymd(new Date(y, m - 1, 20))];
 }
 
+// ===== حالات الشرقية المعتمدة من الـ HR (إجازة / مرضي / استقالة) من تطبيق Drive =====
+const SHARQIA = "الشرقية للدخان";
+async function applySharqiaEvents(list, from, to) {
+  const rows = list.filter(r => r.site === SHARQIA); if (!rows.length) return;
+  let codes = {}, evs = [];
+  try { const m = await getDoc(doc(db, "sharqia_map", "codes")); codes = m.exists() ? m.data().codes || {} : {}; } catch (e) {}
+  try {
+    const sn = await getDocs(query(collection(db, "hr_events"), where("source", "==", "sharqia_drive"), where("status", "==", "approved")));
+    sn.forEach(d => evs.push(d.data()));
+  } catch (e) {}
+  const byCode = {}; rows.forEach(r => { byCode[r.code] = r; if (!r.nid && codes[r.code]?.nid) r.nid = codes[r.code].nid; });
+  const isFri = d => new Date(d + "T00:00").getDay() === 5;
+  for (const e of evs) {
+    const r = byCode[e.code]; if (!r) continue;
+    if (e.type === "resign") {
+      if (!e.entry_date || e.entry_date > to) continue;
+      r.resigned = e.entry_date;
+      for (const d of Object.keys(r.cells)) if (d >= e.entry_date && !r.cells[d].p) r.cells[d] = { v: "س", p: 0, l: true, app: true, ev: "استقالة من " + e.entry_date + (e.reason ? " — " + e.reason : "") };
+      continue;
+    }
+    if (!e.from) continue;
+    const code = e.type === "sick" ? "م" : "ج";
+    for (let d = new Date(e.from + "T00:00"); ymd(d) <= (e.to || e.from); d.setDate(d.getDate() + 1)) {
+      const k = ymd(d); if (k < from || k > to || isFri(k)) continue;
+      const c = r.cells[k];
+      if (c?.p) { c.conf = (e.type === "sick" ? "مرضي" : "إجازة") + " معتمد والشيت بيقول حاضر"; continue; }
+      r.cells[k] = { v: code, p: 0, l: true, app: true, ev: (e.type === "sick" ? "مرضي" : "إجازة") + ` معتمد ${e.from} → ${e.to}` };
+    }
+  }
+}
+
 // ===== التقرير =====
 $("r-go").onclick = async () => {
   const [from, to] = period();
@@ -263,39 +304,43 @@ $("r-go").onclick = async () => {
     for (const d of days) {
       Object.entries(d.entries || {}).forEach(([code, e]) => {
         const w = roster[d.site + "|" + code] || {};
-        const r = getRow(d.site + "|" + code, { site: d.site, code, name: e.name || w.name || code, nid: e.nid || w.nid || "", job: e.job || w.job || "", rep: false });
-        r.cells[d.date] = { v: e.s === "P" ? "1" : "غ", app: d.status === "approved" };
+        const r = getRow(d.site + "|" + code, { site: d.site, code, name: e.name || w.name || code, nid: e.nid || w.nid || "", job: e.job || w.job || "", loc: e.loc || "", rep: false });
+        r.cells[d.date] = cellOf(e, d.status === "approved");
         if (e.s === "A" && e.rep) {
           const k = d.site + "|R" + (e.rep.nid || e.rep.code || e.rep.name);
           const rr = getRow(k, { site: d.site, code: e.rep.code || "", name: e.rep.name, nid: e.rep.nid || "", job: e.job || w.job || "", rep: true });
-          rr.cells[d.date] = { v: "1", app: d.status === "approved" };
+          rr.cells[d.date] = { v: "1", p: 1, app: d.status === "approved" };
         }
       });
     }
     let list = Object.values(rows);
+    if (S.office && (site === "*" || site === SHARQIA)) await applySharqiaEvents(list, from, to);
     if (!list.length) { $("r-out").classList.add("hidden"); return show($("r-msg"), "warn", "مفيش حضور متأكد في الفترة دي."); }
     const jobs = [...new Set(list.map(r => r.job))].sort();
     $("r-job").innerHTML = `<option value="">كل الوظايف</option>` + jobs.map(j => `<option ${j === jobF ? "selected" : ""}>${esc(j)}</option>`).join("");
     if (jobF) list = list.filter(r => r.job === jobF);
-    list.sort((a, b) => a.site.localeCompare(b.site) || a.rep - b.rep || a.job.localeCompare(b.job) || a.name.localeCompare(b.name));
-    list.forEach(r => { r.total = 0; r.extra = 0; dates.forEach(d => { if (r.cells[d]?.v === "1") { r.total++; if (off(d)) r.extra++; } }); });
+    list.sort((a, b) => a.site.localeCompare(b.site) || a.rep - b.rep || a.job.localeCompare(b.job) || (a.loc || "").localeCompare(b.loc || "") || a.name.localeCompare(b.name));
+    // الإضافي: شغل في جمعة أو عطلة، أو ساعات مكتوبة بالرقم (زي 8 في يوم راحة منسقين الإمداد)
+    list.forEach(r => { r.total = 0; r.extra = 0; dates.forEach(d => { const c = r.cells[d]; if (c?.p) { r.total += c.p; if (off(d) || c.hrs) r.extra += c.p; } }); });
+    const hasLoc = list.some(r => r.loc);
     const late = days.filter(d => d.late).length, unapp = days.filter(d => d.status !== "approved").length;
-    S.report = { from, to, dates, list, off, hol, site, late };
+    S.report = { from, to, dates, list, off, hol, site, late, hasLoc };
     // جدول
     const multi = site === "*";
-    let h = `<thead><tr><th>م</th>${multi ? "<th>الموقع</th>" : ""}<th>الاسم</th><th>الرقم القومي</th><th>الوظيفة</th>` +
+    let h = `<thead><tr><th>م</th>${multi ? "<th>الموقع</th>" : ""}<th>الاسم</th><th>${list.some(r => !r.nid) ? "الرقم القومي / الكود" : "الرقم القومي"}</th><th>الوظيفة</th>${hasLoc ? "<th>المكان</th>" : ""}` +
       dates.map(d => `<th class="${off(d) ? "off" : ""}" title="${esc(hol[d] || "")}">${+d.slice(8)}<br>${"حنثرخجس"[new Date(d + "T00:00").getDay()]}</th>`).join("") +
       `<th>الإجمالي</th><th>إضافي</th></tr></thead><tbody>`;
     list.forEach((r, i) => {
-      h += `<tr><td>${i + 1}</td>${multi ? `<td>${esc(r.site)}</td>` : ""}<td class="nm">${esc(r.name)}${r.rep ? " <span class='muted'>(بديل)</span>" : ""}</td><td>${esc(r.nid)}</td><td>${esc(r.job)}</td>` +
-        dates.map(d => { const c = r.cells[d]; return `<td class="${off(d) ? "off" : ""} ${c?.v === "غ" ? "a" : ""} ${c && !c.app ? "unapp" : ""}">${c ? c.v : ""}</td>`; }).join("") +
+      h += `<tr><td>${i + 1}</td>${multi ? `<td>${esc(r.site)}</td>` : ""}<td class="nm">${esc(r.name)}${r.rep ? " <span class='muted'>(بديل)</span>" : ""}</td><td>${esc(r.nid || r.code)}</td><td>${esc(r.job)}</td>${hasLoc ? `<td>${esc(r.loc)}</td>` : ""}` +
+        dates.map(d => { const c = r.cells[d]; return `<td class="${off(d) ? "off" : ""} ${c?.a ? "a" : ""} ${c?.l ? "lv" : ""} ${c?.conf ? "conf" : ""} ${c && !c.app ? "unapp" : ""}"${c?.ev || c?.conf ? ` title="${esc(c.ev || c.conf)}"` : ""}>${c ? esc(c.v) : ""}</td>`; }).join("") +
         `<td><b>${r.total}</b></td><td>${r.extra || ""}</td></tr>`;
     });
-    const span = multi ? 5 : 4;
+    const span = (multi ? 5 : 4) + (hasLoc ? 1 : 0);
     const footRow = (label, f) => `<tr class="foot"><td colspan="${span}" style="text-align:right">${esc(label)}</td>` +
       dates.map(d => `<td class="${off(d) ? "off" : ""}">${f(d) || ""}</td>`).join("") + `<td></td><td></td></tr>`;
-    (jobF ? [jobF] : jobs).forEach(j => h += footRow("حاضرين — " + j, d => list.filter(r => r.job === j && r.cells[d]?.v === "1").length));
-    h += footRow("إجمالي الحاضرين", d => list.filter(r => r.cells[d]?.v === "1").length) + "</tbody>";
+    const pres = (rs, d) => rs.reduce((a, r) => a + (r.cells[d]?.p || 0), 0);
+    (jobF ? [jobF] : jobs).forEach(j => h += footRow("حاضرين — " + j, d => pres(list.filter(r => r.job === j), d)));
+    h += footRow("إجمالي الحاضرين", d => pres(list, d)) + "</tbody>";
     $("r-table").innerHTML = h;
     const sTitle = multi ? "كل المواقع" : site;
     $("print-head").innerHTML = `<b>تقرير حضور ${esc(sTitle)}${jobF ? " — " + esc(jobF) : ""}</b> — من ${from} لحد ${to}`;
@@ -308,12 +353,13 @@ $("r-print").onclick = () => window.print();
 $("r-xlsx").onclick = () => {
   const R = S.report; if (!R) return;
   const multi = R.site === "*";
-  const head = ["م", ...(multi ? ["الموقع"] : []), "الاسم", "الرقم القومي", "الوظيفة", "النوع", ...R.dates.map(d => d.slice(5) + (R.off(d) ? " *" : "")), "الإجمالي", "إضافي"];
+  const head = ["م", ...(multi ? ["الموقع"] : []), "الاسم", "الرقم القومي", "الوظيفة", ...(R.hasLoc ? ["المكان"] : []), "النوع", ...R.dates.map(d => d.slice(5) + (R.off(d) ? " *" : "")), "الإجمالي", "إضافي"];
   const aoa = [[`تقرير حضور ${multi ? "كل المواقع" : R.site} — من ${R.from} لحد ${R.to} (* = جمعة أو عطلة)`], head];
-  R.list.forEach((r, i) => aoa.push([i + 1, ...(multi ? [r.site] : []), r.name, r.nid, r.job, r.rep ? "بديل" : "", ...R.dates.map(d => r.cells[d]?.v === "1" ? 1 : r.cells[d] ? "غ" : ""), r.total, r.extra]));
-  const pre = multi ? 6 : 5;
-  [...new Set(R.list.map(r => r.job))].forEach(j => aoa.push(["", ...Array(pre - 2).fill(""), "حاضرين — " + j, ...R.dates.map(d => R.list.filter(r => r.job === j && r.cells[d]?.v === "1").length), "", ""]));
-  aoa.push(["", ...Array(pre - 2).fill(""), "إجمالي الحاضرين", ...R.dates.map(d => R.list.filter(r => r.cells[d]?.v === "1").length), "", ""]);
+  R.list.forEach((r, i) => aoa.push([i + 1, ...(multi ? [r.site] : []), r.name, r.nid || r.code, r.job, ...(R.hasLoc ? [r.loc] : []), r.rep ? "بديل" : "", ...R.dates.map(d => { const c = r.cells[d]; return !c ? "" : c.v === "1" ? 1 : c.v; }), r.total, r.extra]));
+  const pre = (multi ? 6 : 5) + (R.hasLoc ? 1 : 0);
+  const pres = (rs, d) => rs.reduce((a, r) => a + (r.cells[d]?.p || 0), 0);
+  [...new Set(R.list.map(r => r.job))].forEach(j => aoa.push(["", ...Array(pre - 2).fill(""), "حاضرين — " + j, ...R.dates.map(d => pres(R.list.filter(r => r.job === j), d)), "", ""]));
+  aoa.push(["", ...Array(pre - 2).fill(""), "إجمالي الحاضرين", ...R.dates.map(d => pres(R.list, d)), "", ""]);
   const ws = XLSX.utils.aoa_to_sheet(aoa); ws["!cols"] = head.map((h, i) => ({ wch: i === (multi ? 2 : 1) ? 32 : i === (multi ? 3 : 2) ? 16 : 6 }));
   const wb = XLSX.utils.book_new(); wb.Workbook = { Views: [{ RTL: true }] };
   XLSX.utils.book_append_sheet(wb, ws, "الحضور");

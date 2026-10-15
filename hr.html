@@ -98,7 +98,7 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 function show(el, t, x) { el.className = "msg show " + t; el.textContent = x; }
 const TY = { sick: "مرضي", leave: "إجازة", resign: "استقالة" }, ST = { pending: "مستني اعتماد", approved: "معتمد", rejected: "مرفوض" };
-let ALL = [], EDIT = null, XROWS = [];
+let ALL = [], ALL_LOADED = false, EDIT = null, XROWS = [];
 const KINDS = { annual: "سنوي", casual: "عارضة", unpaid: "بدون أجر" };
 // ===== رفع إكسيل =====
 const HEAD = ["الشركة", "الموقع", "الرقم القومي", "الكود", "الاسم", "النوع (سنوي / عارضة / بدون أجر / مرضي)", "من", "لحد", "ملاحظات"];
@@ -138,19 +138,31 @@ $("xf").onchange = async () => {
   } catch (e) { show($("xmsg"), "err", "الملف ماتقراش: " + e.message); }
 };
 $("xsave").onclick = async () => {
-  const u = auth.currentUser, today = new Date().toISOString().slice(0, 10); let n = 0, skipped = 0;
+  if (!ALL_LOADED) return show($("xmsg"), "err", "لسه بيحمّل الحالات الموجودة — استنى ثانية وجرّب تاني.");
+  const u = auth.currentUser, today = new Date().toISOString().slice(0, 10); let n = 0, same = 0, upd = 0;
   $("xsave").disabled = true;
-  // الحالات المترفعة قبل كده مش بتتكتب تاني — عشان قرار الـ HR (اعتماد/رفض/تعديل) ميرجعش «مستني»
-  const existing = new Set(ALL.map(x => x.id));
+  // السطر اللي اترفع قبل كده (نفس العامل + نفس «من» + نفس النوع) مش بيتكتب فوقه، عشان قرار الـ HR ميرجعش «مستني».
+  // لو اتغيّر فيه حاجة (زي «لحد»): لو لسه مستني بيتحدّث، ولو اتاخد فيه قرار بيتعلّم «اتعدل بعد القرار — راجعه».
+  const byId = new Map(ALL.map(x => [x.id, x]));
+  const FIELDS = ["company", "loc", "name", "to", "days", "reason"];
   try {
     for (const r of XROWS) {
       const id = `xl__${r.nid || r.code}__${r.from}__${r.type}${r.kind ? "_" + r.kind : ""}`;
-      if (existing.has(id)) { skipped++; continue; }
-      await setDoc(doc(db, "hr_events", id), { ...r, entry_date: today, status: "pending", by_email: u.email || "", uploaded_by: u.uid, created_at: serverTimestamp() });
-      existing.add(id); n++;
+      const ex = byId.get(id);
+      if (!ex) {
+        await setDoc(doc(db, "hr_events", id), { ...r, entry_date: today, status: "pending", by_email: u.email || "", uploaded_by: u.uid, created_at: serverTimestamp() });
+        byId.set(id, { id, ...r, status: "pending" }); n++;
+        continue;
+      }
+      const diff = {}; FIELDS.forEach(k => { if (String(ex[k] ?? "") !== String(r[k] ?? "")) diff[k] = r[k]; });
+      if (!Object.keys(diff).length) { same++; continue; }
+      await updateDoc(doc(db, "hr_events", id), ex.status === "pending" ? diff : { changed: true, changed_data: diff });
+      upd++;
     }
-    show($("xmsg"), "ok", `اترفع ${n} سطر — هتلاقيهم تحت «مستني اعتماد».` + (skipped ? ` (${skipped} سطر كانوا مترفعين قبل كده واتسابوا زي ما هم)` : "")); $("xf").value = ""; XROWS = [];
-  } catch (e) { show($("xmsg"), "err", `اترفع ${n} بس: ` + (e.code === "permission-denied" ? "محتاج تحديث الـ Rules." : e.message)); }
+    show($("xmsg"), "ok", `اترفع ${n} سطر جديد — هتلاقيهم تحت «مستني اعتماد».`
+      + (upd ? ` و${upd} سطر اتغيّر عن المترفع قبل كده (اللي اتاخد فيه قرار متعلّم «راجعه»).` : "")
+      + (same ? ` و${same} سطر زي ما هو.` : "")); $("xf").value = ""; XROWS = [];
+  } catch (e) { show($("xmsg"), "err", `اترفع ${n} جديد و${upd} تعديل، ووقف عند خطأ: ` + (e.code === "permission-denied" ? "محتاج تحديث الـ Rules." : e.message)); }
 };
 
 $("l-btn").onclick = async () => { try { await signInWithEmailAndPassword(auth, $("l-email").value.trim(), $("l-pass").value); } catch (e) { show($("l-err"), "err", "الإيميل أو الباسورد غلط"); } };
@@ -162,7 +174,7 @@ onAuthStateChanged(auth, async user => {
   if (!["admin", "hr"].includes(role)) return $("denied").classList.remove("hidden");
   $("who").textContent = user.email; $("app").classList.remove("hidden");
   onSnapshot(collection(db, "hr_events"), snap => {
-    ALL = snap.docs.map(d => ({ id: d.id, ...d.data() })); render();
+    ALL = snap.docs.map(d => ({ id: d.id, ...d.data() })); ALL_LOADED = true; render();
   }, err => show($("msg"), "err", "مش قادر أقرا الحالات: " + (err.code === "permission-denied" ? "محتاج تحديث الـ Rules (hr_events)." : err.message)));
   try { const s = await getDoc(doc(db, "admin_tasks_status", "sharqia_sync")); const t = s.data()?.last_run?.toDate?.(); if (t) $("sync").textContent = "آخر تحديث: " + t.toLocaleString("ar-EG"); } catch (e) {}
 });

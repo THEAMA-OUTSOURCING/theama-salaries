@@ -368,7 +368,7 @@ input[type=file]{width:100%;padding:8px;cursor:pointer;font-size:13px;border:1px
 <!-- Firebase SDKs -->
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-import { getFirestore, collection, getDocs, addDoc, deleteDoc, doc, query, where, setDoc, getDoc, onSnapshot, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { getFirestore, collection, getDocs, addDoc, deleteDoc, doc, query, where, setDoc, getDoc, onSnapshot, serverTimestamp, writeBatch } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut, updatePassword } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 
 const firebaseConfig = {
@@ -558,35 +558,58 @@ async function uploadSheet(){
     const ws = wb.Sheets[wb.SheetNames[0]];
     const rows = XLSX.utils.sheet_to_json(ws,{defval:''});
 
-    // مسح القديم
-    const old = await getDocs(collection(db,'payroll'));
-    const deletes = old.docs.map(d=>deleteDoc(doc(db,'payroll',d.id)));
-    await Promise.all(deletes);
+    // الترتيب الآمن: الجديد يترفع كله الأول، وبعدين بس القديم يتمسح.
+    // لو النت فصل في النص، الكشوف القديمة بتفضل زي ما هي والموظف ميلاقيش «مفيش كشف».
+    // كل رفعة ليها upload_id، وصفحة الموظف بتعرض أحدث رفعة بس لو لقت القديم والجديد مع بعض.
+    const uploadId = new Date().toISOString().replace(/\D/g,'').slice(0,14);
+    const recs = [];
+    rows.forEach(r=>{
+      let empCode = '', nationalId = '';
+      for(let k of Object.keys(r)){
+        const nk = k.trim();
+        if(nk==='كود الموظف') empCode = String(r[k]).trim();
+        if(nk==='الرقم القومى' || nk==='الرقم القومي') nationalId = String(r[k]).trim();
+      }
+      if(!empCode) return;
+      const n = recs.length + 1;
+      recs.push({ id: empCode+'_'+uploadId+'_'+String(n).padStart(5,'0'),
+        data: { employee_code: empCode, national_id: nationalId, upload_id: uploadId, data: r } });
+    });
+    if(!recs.length) throw new Error('مفيش ولا سطر فيه «كود الموظف» في الشيت');
 
-    // رفع الجديد
-    let count = 0;
-    const BATCH = 20;
-    for(let i=0; i<rows.length; i+=BATCH){
-      const chunk = rows.slice(i,i+BATCH);
-      await Promise.all(chunk.map(r=>{
-        // جيب الكود والرقم القومي بمرونة
-        let empCode = '', nationalId = '';
-        for(let k of Object.keys(r)){
-          const nk = k.trim();
-          if(nk==='كود الموظف') empCode = String(r[k]).trim();
-          if(nk==='الرقم القومى' || nk==='الرقم القومي') nationalId = String(r[k]).trim();
-        }
-        if(!empCode) return Promise.resolve();
-        count++;
-        return setDoc(doc(db,'payroll',empCode+'_'+count), {
-          employee_code: empCode,
-          national_id: nationalId,
-          data: r
-        });
-      }));
-      btn.innerHTML='<span class="spinner"></span> جاري الرفع... '+Math.min(i+BATCH,rows.length)+'/'+rows.length;
+    const old = await getDocs(collection(db,'payroll'));   // الـ IDs القديمة عشان نمسحها في الآخر
+    const BATCH = 400;                                      // حد Firestore للدفعة 500 عملية
+    const written = [];
+    try{
+      for(let i=0; i<recs.length; i+=BATCH){
+        const b = writeBatch(db);
+        const part = recs.slice(i,i+BATCH);
+        part.forEach(x=>b.set(doc(db,'payroll',x.id), x.data));
+        await b.commit();
+        written.push(...part.map(x=>x.id));
+        btn.innerHTML='<span class="spinner"></span> جاري الرفع... '+written.length+'/'+recs.length;
+      }
+    }catch(e){
+      // الرفع وقف في النص: نشيل اللي اترفع من الجديد، والقديم لسه سليم
+      for(let i=0; i<written.length; i+=BATCH){
+        const b = writeBatch(db); written.slice(i,i+BATCH).forEach(id=>b.delete(doc(db,'payroll',id)));
+        try{ await b.commit(); }catch(_){}
+      }
+      throw new Error('الرفع ماكملش، والكشوف القديمة زي ما هي — جرّب تاني ('+e.message+')');
     }
-    document.getElementById('upload-success-msg').textContent='تم رفع '+count+' موظف بنجاح ✓';
+
+    // الجديد اترفع كامل → نمسح القديم
+    const newIds = new Set(recs.map(x=>x.id));
+    const oldIds = old.docs.map(d=>d.id).filter(id=>!newIds.has(id));
+    let leftover = 0;
+    for(let i=0; i<oldIds.length; i+=BATCH){
+      const b = writeBatch(db); oldIds.slice(i,i+BATCH).forEach(id=>b.delete(doc(db,'payroll',id)));
+      try{ await b.commit(); }catch(_){ leftover += Math.min(BATCH, oldIds.length-i); }
+      btn.innerHTML='<span class="spinner"></span> بيمسح القديم... '+Math.min(i+BATCH,oldIds.length)+'/'+oldIds.length;
+    }
+    const count = recs.length;
+    document.getElementById('upload-success-msg').textContent='تم رفع '+count+' موظف بنجاح ✓'
+      + (leftover ? ' — بس '+leftover+' كشف قديم مااتمسحش (مش هيظهروا للموظفين). ارفع الشيت تاني وقت ما النت يبقى أحسن عشان يتمسحوا.' : '');
     successEl.style.display='block';
     document.getElementById('admin-excel').value='';
     runSync(); // إنشاء حسابات الموظفين الجداد تلقائياً
@@ -602,7 +625,9 @@ window.uploadSheet = uploadSheet;
 async function confirmClear(){
   if(!confirm('هتمسح كل بيانات الرواتب. متأكد؟')) return;
   const snap = await getDocs(collection(db,'payroll'));
-  await Promise.all(snap.docs.map(d=>deleteDoc(doc(db,'payroll',d.id))));
+  for(let i=0; i<snap.docs.length; i+=400){
+    const b = writeBatch(db); snap.docs.slice(i,i+400).forEach(d=>b.delete(d.ref)); await b.commit();
+  }
   alert('تم مسح كل البيانات');
 }
 window.confirmClear = confirmClear;
@@ -744,8 +769,11 @@ async function doLogin(){
       fail('مفيش كشف راتب متسجّل على الكود ده حالياً');
       resetBtn(); return;
     }
-    const rows = snap.docs.map(d=>d.data().data);
-    const nationalId = snap.docs[0].data().national_id;
+    // لو لقينا كشوف من رفعتين (القديم لسه بيتمسح)، نعرض أحدث رفعة بس، وبترتيبها في الشيت
+    const latest = snap.docs.reduce((m,d)=>{ const u = d.data().upload_id || ''; return u > m ? u : m; }, '');
+    const docs = snap.docs.filter(d=>(d.data().upload_id || '') === latest).sort((a,b)=>a.id.localeCompare(b.id));
+    const rows = docs.map(d=>d.data().data);
+    const nationalId = docs[0].data().national_id;
     loggedUser = {code: myCode, rows, nationalId};
 
     // 3) لو داخل بالرقم القومي (أول مرة أو بعد إعادة تعيين) — لازم يغيّره

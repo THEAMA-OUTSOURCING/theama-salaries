@@ -90,6 +90,7 @@ tr.foot td{background:#f3f3ef;font-weight:600;}
           <label class="f">الوظيفة<select id="r-job"><option value="">كل الوظايف</option></select></label>
           <label class="row" style="align-items:center;gap:4px;font-size:13px;"><input type="checkbox" id="r-approved"> المعتمد بس</label>
           <button class="btn" id="r-go">اعرض</button>
+          <label class="f">بحث<input id="r-q" placeholder="الاسم أو الرقم القومي أو الكود" style="min-width:200px"></label>
           <button class="btn sec" id="r-print" disabled><i class="ti ti-printer"></i> طباعة</button>
           <button class="btn sec office-only hidden" id="r-xlsx" disabled><i class="ti ti-file-spreadsheet"></i> إكسيل</button>
         </div>
@@ -331,7 +332,7 @@ $("r-go").onclick = async () => {
       dates.map(d => `<th class="${off(d) ? "off" : ""}" title="${esc(hol[d] || "")}">${+d.slice(8)}<br>${"حنثرخجس"[new Date(d + "T00:00").getDay()]}</th>`).join("") +
       `<th>الإجمالي</th><th>إضافي</th></tr></thead><tbody>`;
     list.forEach((r, i) => {
-      h += `<tr><td>${i + 1}</td>${multi ? `<td>${esc(r.site)}</td>` : ""}<td class="nm">${esc(r.name)}${r.rep ? " <span class='muted'>(بديل)</span>" : ""}</td><td>${esc(r.nid || r.code)}</td><td>${esc(r.job)}</td>${hasLoc ? `<td>${esc(r.loc)}</td>` : ""}` +
+      h += `<tr data-i="${i}"><td>${i + 1}</td>${multi ? `<td>${esc(r.site)}</td>` : ""}<td class="nm">${esc(r.name)}${r.rep ? " <span class='muted'>(بديل)</span>" : ""}</td><td>${esc(r.nid || r.code)}</td><td>${esc(r.job)}</td>${hasLoc ? `<td>${esc(r.loc)}</td>` : ""}` +
         dates.map(d => { const c = r.cells[d]; return `<td class="${off(d) ? "off" : ""} ${c?.a ? "a" : ""} ${c?.l ? "lv" : ""} ${c?.conf ? "conf" : ""} ${c && !c.app ? "unapp" : ""}"${c?.ev || c?.conf ? ` title="${esc(c.ev || c.conf)}"` : ""}>${c ? esc(c.v) : ""}</td>`; }).join("") +
         `<td><b>${r.total}</b></td><td>${r.extra || ""}</td></tr>`;
     });
@@ -345,11 +346,20 @@ $("r-go").onclick = async () => {
     const sTitle = multi ? "كل المواقع" : site;
     $("print-head").innerHTML = `<b>تقرير حضور ${esc(sTitle)}${jobF ? " — " + esc(jobF) : ""}</b> — من ${from} لحد ${to}`;
     $("r-sum").textContent = `${list.length} عامل · ${days.length} يوم حضور متأكد · ${unapp} لسه مااتعتمدش · رفع متأخر: ${late} مرة` + (Object.keys(hol).length ? ` · العطلات: ${Object.entries(hol).filter(([d]) => d >= from && d <= to).map(([d, n]) => d.slice(8) + " " + n).join("، ")}` : "");
-    $("r-out").classList.remove("hidden"); hide($("r-msg"));
+    $("r-out").classList.remove("hidden"); hide($("r-msg")); filterRows();
     $("r-print").disabled = false; $("r-xlsx").disabled = false;
   } catch (e) { show($("r-msg"), "err", "حصل خطأ: " + e.message); }
 };
 $("r-print").onclick = () => window.print();
+// بحث سريع في الجدول المعروض (الاسم / الرقم القومي / الكود)
+function filterRows() {
+  const q = $("r-q").value.trim();
+  document.querySelectorAll("#r-table tbody tr:not(.foot)").forEach(tr => {
+    const r = S.report?.list?.[+tr.dataset.i];
+    tr.style.display = !q || (r && [r.name, r.nid, r.code].some(x => String(x || "").includes(q))) ? "" : "none";
+  });
+}
+$("r-q").oninput = filterRows;
 $("r-xlsx").onclick = () => {
   const R = S.report; if (!R) return;
   const multi = R.site === "*";

@@ -215,6 +215,30 @@ td.n,th.n{text-align:center;font-variant-numeric:tabular-nums;}
     <!-- بيانات العمال -->
     <section data-panel="workers" class="hidden">
       <div class="card">
+        <h2>رفع تعديلات كتير من إكسيل</h2>
+        <p class="muted" style="margin-bottom:8px;">شيت فيه عمود <b>الكود</b>، ومعاه عمود أو أكتر من: <b>النوع</b> (أساسي / موسمي / يومية / مشي)، <b>الوظيفة</b>، <b>الموقع</b>، <b>ساري من</b>، <b>ملاحظة</b>. ولعامل جديد مالوش كود: سيب الكود فاضي واكتب <b>الاسم</b> و<b>الرقم القومي</b> و<b>الموقع</b> و<b>النوع</b> و<b>الوظيفة</b> (هيتضاف من غير بطاقة، والمشرف يرفعها بعدين). هتشوف المقارنة قبل الحفظ.</p>
+        <input type="file" id="w-file" accept=".xlsx,.xls">
+        <div class="msg" id="w-up-msg"></div>
+        <div class="hidden" id="w-preview">
+          <div class="tbl" style="margin-top:10px;"><table><thead><tr><th>الكود</th><th>الاسم</th><th>دلوقتي</th><th>الجديد</th><th></th></tr></thead><tbody id="w-prev-list"></tbody></table></div>
+          <div class="row" style="margin-top:10px;"><button class="btn" id="w-apply">حفظ التعديلات</button><button class="btn sec" id="w-discard">إلغاء</button></div>
+        </div>
+      </div>
+      <div class="card">
+        <h2>التعديلات اللي لسه مش في شيت الرواتب</h2>
+        <div class="tbl"><table><thead><tr><th>الاسم</th><th>الكود</th><th>التعديل</th><th>ساري من</th><th>بواسطة</th><th></th></tr></thead><tbody id="w-ovr"></tbody></table></div>
+      </div>
+      <div class="card">
+        <h2>أسماء المشرفين شالوها من الكشف</h2>
+        <p class="muted" style="margin-bottom:8px;">دي اتشالت من الكشف المطبوع بس. لو العامل مشي فعلاً، سجّله "مشي" عشان يتشال من السجلات لحد شيت الرواتب الجاي.</p>
+        <div class="tbl"><table><thead><tr><th>الاسم</th><th>الكود</th><th>الموقع</th><th>السبب</th><th>بواسطة</th><th></th></tr></thead><tbody id="w-rem"></tbody></table></div>
+      </div>
+      <div class="card">
+        <h2>عمال جداد اتضافوا من المواقع (بالبطاقة)</h2>
+        <p class="muted" style="margin-bottom:8px;">حدد النوع للي اتضاف للكشف. لحد ما تحدده، بيظهر في الكشف "جديد". والبدلاء الجداد بيفضلوا في قايمة بدلاء موقعهم.</p>
+        <div class="tbl"><table><thead><tr><th>الاسم</th><th>الرقم القومي</th><th>الموقع</th><th>الوظيفة</th><th>اتضاف كـ</th><th>أول يوم</th><th>الفيش</th><th>النوع</th><th></th></tr></thead><tbody id="w-new"></tbody></table></div>
+      </div>
+      <div class="card">
         <h2>بيانات العمال في مواقع الحضور</h2>
         <p class="muted" style="margin-bottom:10px;">أي تعديل هنا بيسري على كشف الموقع خلال ثواني، من غير ما تستنى شيت الرواتب. ولما شيت الرواتب الجديد يبقى فيه نفس التعديل، التعديل اليدوي بيتشال لوحده.</p>
         <div class="row">
@@ -236,30 +260,6 @@ td.n,th.n{text-align:center;font-variant-numeric:tabular-nums;}
         </div>
         <datalist id="w-jobs"></datalist>
         <div class="msg" id="w-msg"></div>
-      </div>
-      <div class="card">
-        <h2>عمال جداد اتضافوا من المواقع (بالبطاقة)</h2>
-        <p class="muted" style="margin-bottom:8px;">حدد النوع للي اتضاف للكشف. لحد ما تحدده، بيظهر في الكشف "جديد". والبدلاء الجداد بيفضلوا في قايمة بدلاء موقعهم.</p>
-        <div class="tbl"><table><thead><tr><th>الاسم</th><th>الرقم القومي</th><th>الموقع</th><th>الوظيفة</th><th>اتضاف كـ</th><th>أول يوم</th><th>الفيش</th><th>النوع</th><th></th></tr></thead><tbody id="w-new"></tbody></table></div>
-      </div>
-      <div class="card">
-        <h2>أسماء المشرفين شالوها من الكشف</h2>
-        <p class="muted" style="margin-bottom:8px;">دي اتشالت من الكشف المطبوع بس. لو العامل مشي فعلاً، سجّله "مشي" عشان يتشال من السجلات لحد شيت الرواتب الجاي.</p>
-        <div class="tbl"><table><thead><tr><th>الاسم</th><th>الكود</th><th>الموقع</th><th>السبب</th><th>بواسطة</th><th></th></tr></thead><tbody id="w-rem"></tbody></table></div>
-      </div>
-      <div class="card">
-        <h2>التعديلات اللي لسه مش في شيت الرواتب</h2>
-        <div class="tbl"><table><thead><tr><th>الاسم</th><th>الكود</th><th>التعديل</th><th>ساري من</th><th>بواسطة</th><th></th></tr></thead><tbody id="w-ovr"></tbody></table></div>
-      </div>
-      <div class="card">
-        <h2>رفع تعديلات كتير من إكسيل</h2>
-        <p class="muted" style="margin-bottom:8px;">شيت فيه عمود <b>الكود</b>، ومعاه عمود أو أكتر من: <b>النوع</b> (أساسي / موسمي / يومية / مشي)، <b>الوظيفة</b>، <b>الموقع</b>، <b>ساري من</b>، <b>ملاحظة</b>. ولعامل جديد مالوش كود: سيب الكود فاضي واكتب <b>الاسم</b> و<b>الرقم القومي</b> و<b>الموقع</b> و<b>النوع</b> و<b>الوظيفة</b> (هيتضاف من غير بطاقة، والمشرف يرفعها بعدين). هتشوف المقارنة قبل الحفظ.</p>
-        <input type="file" id="w-file" accept=".xlsx,.xls">
-        <div class="msg" id="w-up-msg"></div>
-        <div class="hidden" id="w-preview">
-          <div class="tbl" style="margin-top:10px;"><table><thead><tr><th>الكود</th><th>الاسم</th><th>دلوقتي</th><th>الجديد</th><th></th></tr></thead><tbody id="w-prev-list"></tbody></table></div>
-          <div class="row" style="margin-top:10px;"><button class="btn" id="w-apply">حفظ التعديلات</button><button class="btn sec" id="w-discard">إلغاء</button></div>
-        </div>
       </div>
     </section>
 

@@ -231,19 +231,30 @@ $("h-list").onclick = async e => {
   try { await setDoc(doc(db, "holidays", m), { days: h, updated_at: serverTimestamp() }); loadHolidays(); } catch (er) { show($("h-msg"), "err", er.message); }
 };
 
+// أيام موقع في فترة بس (بدل كل أيام الموقع من البداية) — محتاج index على att_days: site + date.
+// لو الـ index لسه مااتعملش، بيرجع للطريقة القديمة عشان الصفحة متقفش.
+async function siteDays(site, from, to) {
+  try {
+    const sn = await getDocs(query(collection(db, "att_days"), where("site", "==", site), where("date", ">=", from), where("date", "<=", to)));
+    return sn.docs;
+  } catch (e) {
+    if (e.code !== "failed-precondition") throw e;
+    console.warn("att_days محتاج index (site + date):", e.message);
+    const sn = await getDocs(query(collection(db, "att_days"), where("site", "==", site)));
+    return sn.docs.filter(d => { const x = d.data().date || ""; return x >= from && x <= to; });
+  }
+}
 // ===== جلب أيام الحضور =====
 async function fetchDays(from, to, site) {
   let docs = [];
-  if (S.office) {
+  if (S.office && (!site || site === "*")) {
+    // المكتب، كل المواقع: الفترة بس
     const sn = await getDocs(query(collection(db, "att_days"), where("date", ">=", from), where("date", "<=", to)));
     sn.forEach(d => docs.push({ id: d.id, ...d.data() }));
-    if (site && site !== "*") docs = docs.filter(d => d.site === site);
   } else {
+    // موقع واحد (أو مواقع المشرف): الموقع في الفترة بس
     const sites = site && site !== "*" ? [site] : S.sites;
-    for (const s of sites) {
-      const sn = await getDocs(query(collection(db, "att_days"), where("site", "==", s)));
-      sn.forEach(d => { const x = d.data(); if (x.date >= from && x.date <= to) docs.push({ id: d.id, ...x }); });
-    }
+    for (const s of sites) (await siteDays(s, from, to)).forEach(d => docs.push({ id: d.id, ...d.data() }));
   }
   return docs;
 }

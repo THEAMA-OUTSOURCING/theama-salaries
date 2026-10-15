@@ -236,6 +236,19 @@ async function renderOver() {
     : `<p class="muted" style="margin-top:8px;">✓ مفيش يوم الحاضرين فيه زادوا عن المخطط. ${note}</p>`;
 }
 
+// أيام موقع في فترة بس (بدل كل أيام الموقع من البداية) — محتاج index على att_days: site + date.
+// لو الـ index لسه مااتعملش، بيرجع للطريقة القديمة عشان الصفحة متقفش.
+async function siteDays(site, from, to) {
+  try {
+    const sn = await getDocs(query(collection(db, "att_days"), where("site", "==", site), where("date", ">=", from), where("date", "<=", to)));
+    return sn.docs;
+  } catch (e) {
+    if (e.code !== "failed-precondition") throw e;
+    console.warn("att_days محتاج index (site + date):", e.message);
+    const sn = await getDocs(query(collection(db, "att_days"), where("site", "==", site)));
+    return sn.docs.filter(d => { const x = d.data().date || ""; return x >= from && x <= to; });
+  }
+}
 $("save").onclick = async () => {
   const list = selected(); if (!list.length) return;
   const sites = [...new Set(list.map(([, d]) => d.site))];
@@ -244,8 +257,9 @@ $("save").onclick = async () => {
   try {
     // أمان: منكتبش فوق يوم متسجل من الكشوف المصورة
     for (const s of sites) {
-      const sn = await getDocs(query(collection(db, "att_days"), where("site", "==", s)));
-      const photo = sn.docs.filter(d => d.data().source !== "excel" && list.some(([k]) => k === d.id));
+      const ds = list.filter(([, d]) => d.site === s).map(([, d]) => d.date).sort();
+      const found = await siteDays(s, ds[0], ds[ds.length - 1]);
+      const photo = found.filter(d => d.data().source !== "excel" && list.some(([k]) => k === d.id));
       if (photo.length) throw new Error(`فيه ${photo.length} يوم في ${s} متسجل من الكشوف المصورة — مش هكتب فوقه.`);
     }
     const u = auth.currentUser;

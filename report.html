@@ -87,6 +87,7 @@ tr.foot td{background:#f3f3ef;font-weight:600;}
           <label class="f" id="r-month-w">الشهر<input type="month" id="r-month"></label>
           <label class="f hidden" id="r-from-w">من<input type="date" id="r-from"></label>
           <label class="f hidden" id="r-to-w">لحد<input type="date" id="r-to"></label>
+          <label class="f office-only hidden">التقرير<select id="r-kind"><option value="att">حضور</option><option value="annual">إجازة سنوي</option><option value="sick">مرضي</option></select></label>
           <label class="f">الوظيفة<select id="r-job"><option value="">كل الوظايف</option></select></label>
           <label class="row" style="align-items:center;gap:4px;font-size:13px;"><input type="checkbox" id="r-approved"> المعتمد بس</label>
           <button class="btn" id="r-go">اعرض</button>
@@ -188,6 +189,7 @@ document.querySelectorAll(".tab").forEach(t => t.onclick = () => {
   document.querySelectorAll(".tab").forEach(x => x.setAttribute("aria-selected", x === t));
   document.querySelectorAll("[data-panel]").forEach(p => p.classList.toggle("hidden", p.dataset.panel !== t.dataset.tab));
 });
+$("r-kind").onchange = () => { S.report = null; $("r-out").classList.add("hidden"); $("r-print").disabled = true; $("r-xlsx").disabled = true; };
 $("r-mode").onchange = () => {
   const c = $("r-mode").value === "custom";
   $("r-month-w").classList.toggle("hidden", c); $("r-from-w").classList.toggle("hidden", !c); $("r-to-w").classList.toggle("hidden", !c);
@@ -287,11 +289,89 @@ async function applySharqiaEvents(list, from, to) {
   }
 }
 
+// ===== تقرير الإجازات السنوي / المرضي: سطر لكل حالة معتمدة من الـ HR =====
+const LV_TITLE = { annual: "إجازات سنوي", sick: "مرضي" };
+async function leaveReport(from, to, site, jobF, kind) {
+  show($("r-msg"), "info", "بيحمّل...");
+  try {
+    // مين في الموقع: من حضور الفترة (عشان مواقع الإكسيل كمان) + كشوف المواقع
+    const who = {}, byCode = {}, anyCode = {};
+    const put = (s, code, nid, name, job) => { const w = { site: s, code: String(code || ""), nid: nid || "", name: name || "", job: job || "" }; if (w.nid) who[w.nid] ??= w; if (w.code) { byCode[s + "|" + w.code] ??= w; anyCode[w.code] ??= w; } };
+    let codes = {};
+    try { const m = await getDoc(doc(db, "sharqia_map", "codes")); codes = m.exists() ? m.data().codes || {} : {}; } catch (e) {}
+    for (const d of await fetchDays(from, to, site))
+      Object.entries(d.entries || {}).forEach(([code, e]) => put(d.site, code, e.nid || (d.site === SHARQIA ? codes[code]?.nid : ""), e.name, e.job));
+    for (const s of (site === "*" ? S.sites : [site])) {
+      try { const r = await getDoc(doc(db, "rosters", s)); (r.exists() ? r.data().workers : []).forEach(w => put(s, w.code, w.nid, w.name, w.job)); } catch (e) {}
+    }
+    const evs = [];
+    const sn = await getDocs(query(collection(db, "hr_events"), where("status", "==", "approved")));
+    sn.forEach(d => evs.push(d.data()));
+    const isFri = d => new Date(d + "T00:00").getDay() === 5;
+    const list = [];
+    for (const e of evs) {
+      const ok = kind === "sick" ? e.type === "sick" : (e.type === "leave" && (!e.kind || e.kind === "annual"));
+      if (!ok || !e.from) continue;
+      const eTo = e.to || e.from;
+      if (eTo < from || e.from > to) continue;
+      const w = (e.nid && who[e.nid]) || (e.source === "sharqia_drive" ? byCode[SHARQIA + "|" + e.code] : (e.code ? anyCode[String(e.code)] : null));
+      if (!w && site !== "*") continue;     // موقع معيّن: الحالات اللي عمالها في الموقع ده بس
+      let inP = 0; for (let d = new Date((e.from > from ? e.from : from) + "T00:00"); ymd(d) <= (eTo < to ? eTo : to); d.setDate(d.getDate() + 1)) if (!isFri(ymd(d))) inP++;
+      list.push({ site: w?.site || [e.company, e.loc].filter(Boolean).join(" — ") || "—", name: e.name || w?.name || "", nid: e.nid || w?.nid || "", code: e.code || w?.code || "",
+        job: w?.job || e.job || "", from: e.from, to: eTo, inP, days: +e.days || inP, reason: e.reason || "", note: e.note || "",
+        flag: e.deleted_in_sheet ? "اتمسح من الشيت" : e.changed ? "اتعدل في الشيت ولسه مستني مراجعة الـ HR" : "" });
+    }
+    const jobs = [...new Set(list.map(r => r.job).filter(Boolean))].sort();
+    $("r-job").innerHTML = `<option value="">كل الوظايف</option>` + jobs.map(j => `<option ${j === jobF ? "selected" : ""}>${esc(j)}</option>`).join("");
+    let rows = jobF ? list.filter(r => r.job === jobF) : list;
+    if (!rows.length) { $("r-out").classList.add("hidden"); return show($("r-msg"), "warn", `مفيش ${LV_TITLE[kind]} معتمد في الفترة دي.`); }
+    rows.sort((a, b) => a.site.localeCompare(b.site) || a.name.localeCompare(b.name) || a.from.localeCompare(b.from));
+    const multi = site === "*";
+    let h = `<thead><tr><th>م</th>${multi ? "<th>الموقع</th>" : ""}<th>الاسم</th><th>الرقم القومي / الكود</th><th>الوظيفة</th><th>من</th><th>لحد</th><th>أيام في الفترة</th><th>أيام الحالة</th><th>السبب / ملاحظة</th></tr></thead><tbody>`;
+    rows.forEach((r, i) => h += `<tr data-i="${i}"><td>${i + 1}</td>${multi ? `<td>${esc(r.site)}</td>` : ""}<td class="nm">${esc(r.name)}</td><td>${esc(r.nid || r.code)}</td><td>${esc(r.job)}</td><td>${r.from}</td><td>${r.to}</td><td><b>${r.inP}</b></td><td>${r.days}</td><td class="nm">${esc([r.reason, r.note].filter(Boolean).join(" — "))}${r.flag ? ` <b style="color:#a32d2d">(${esc(r.flag)})</b>` : ""}</td></tr>`);
+    const tot = rows.reduce((a, r) => a + r.inP, 0), ppl = new Set(rows.map(r => r.nid || r.code || r.name)).size;
+    h += `<tr class="foot"><td colspan="${multi ? 7 : 6}" style="text-align:right">الإجمالي</td><td><b>${tot}</b></td><td></td><td></td></tr></tbody>`;
+    $("r-table").innerHTML = h;
+    S.report = { kind, from, to, site, list: rows, tot, ppl };
+    $("print-head").innerHTML = `<b>تقرير ${LV_TITLE[kind]} — ${esc(multi ? "كل المواقع" : site)}${jobF ? " — " + esc(jobF) : ""}</b> — من ${from} لحد ${to}`;
+    $("r-sum").textContent = `${rows.length} حالة · ${ppl} عامل · ${tot} يوم في الفترة (من غير الجمعة) · الحالات المعتمدة من الـ HR بس`;
+    $("r-out").classList.remove("hidden"); hide($("r-msg")); filterRows();
+    $("r-print").disabled = false; $("r-xlsx").disabled = false;
+  } catch (e) { show($("r-msg"), "err", "حصل خطأ: " + e.message); }
+}
+async function leaveXlsx(R) {
+  const ExcelJS = await loadExcelJS();
+  const multi = R.site === "*", title = LV_TITLE[R.kind];
+  const head = ["م", ...(multi ? ["الموقع"] : []), "الاسم", "الرقم القومي / الكود", "الوظيفة", "من", "لحد", "أيام في الفترة", "أيام الحالة", "السبب / ملاحظة"];
+  const wb = new ExcelJS.Workbook(); wb.creator = "بوابة تيما";
+  const ws = wb.addWorksheet(title, { views: [{ rightToLeft: true, state: "frozen", ySplit: 2 }],
+    pageSetup: { orientation: "landscape", paperSize: 9, fitToPage: true, fitToWidth: 1, fitToHeight: 0 } });
+  const thin = { style: "thin", color: { argb: "FFBFBFBF" } }, box = { top: thin, left: thin, bottom: thin, right: thin };
+  ws.mergeCells(1, 1, 1, head.length);
+  Object.assign(ws.getCell(1, 1), { value: `تقرير ${title} — ${multi ? "كل المواقع" : R.site} — من ${R.from} لحد ${R.to}`, font: { bold: true, size: 13 }, alignment: { horizontal: "center" } });
+  const hr = ws.addRow(head);
+  hr.eachCell(c => { c.font = { bold: true, color: { argb: "FFFFFFFF" } }; c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF2B2B2B" } }; c.alignment = { horizontal: "center", vertical: "middle", wrapText: true }; c.border = box; });
+  R.list.forEach((r, i) => {
+    const row = ws.addRow([i + 1, ...(multi ? [r.site] : []), r.name, r.nid || r.code, r.job, r.from, r.to, r.inP, r.days, [r.reason, r.note, r.flag && "(" + r.flag + ")"].filter(Boolean).join(" — ")]);
+    row.eachCell({ includeEmpty: true }, c => { c.border = box; c.alignment = { horizontal: "center", vertical: "middle" }; });
+  });
+  const fv = Array(head.length).fill(null); fv[head.length - 4] = "الإجمالي"; fv[head.length - 3] = R.tot;
+  const f = ws.addRow(fv);
+  f.font = { bold: true };
+  const w = [5, ...(multi ? [18] : []), 28, 18, 16, 12, 12, 10, 10, 30]; w.forEach((x, i) => ws.getColumn(i + 1).width = x);
+  const buf = await wb.xlsx.writeBuffer();
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+  a.download = `${title} ${multi ? "كل المواقع" : R.site} ${R.from} - ${R.to}.xlsx`;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+
 // ===== التقرير =====
 $("r-go").onclick = async () => {
   const [from, to] = period();
   if (!from || !to || from > to) return show($("r-msg"), "err", "الفترة مش صحيحة.");
   const site = $("r-site").value, jobF = $("r-job").value, onlyApp = $("r-approved").checked;
+  if (S.office && $("r-kind").value !== "att") return leaveReport(from, to, site, jobF, $("r-kind").value);
   show($("r-msg"), "info", "بيحمّل...");
   try {
     const days = (await fetchDays(from, to, site)).filter(d => !onlyApp || d.status === "approved");
@@ -328,7 +408,7 @@ $("r-go").onclick = async () => {
     list.forEach(r => { r.total = 0; r.extra = 0; dates.forEach(d => { const c = r.cells[d]; if (c?.p) { r.total += c.p; if (off(d) || c.hrs) r.extra += c.p; } }); });
     const hasLoc = list.some(r => r.loc);
     const late = days.filter(d => d.late).length, unapp = days.filter(d => d.status !== "approved").length;
-    S.report = { from, to, dates, list, off, hol, site, late, hasLoc };
+    S.report = { kind: "att", from, to, dates, list, off, hol, site, late, hasLoc };
     // جدول
     const multi = site === "*";
     let h = `<thead><tr><th>م</th>${multi ? "<th>الموقع</th>" : ""}<th>الاسم</th><th>${list.some(r => !r.nid) ? "الرقم القومي / الكود" : "الرقم القومي"}</th><th>الوظيفة</th>${hasLoc ? "<th>المكان</th>" : ""}` +
@@ -466,6 +546,7 @@ function buildReportWorkbook(ExcelJS, R) {
 $("r-xlsx").onclick = async () => {
   const R = S.report; if (!R) return;
   const btn = $("r-xlsx"); btn.disabled = true;
+  if (R.kind !== "att") { try { await leaveXlsx(R); } catch (e) { show($("r-msg"), "err", "الإكسيل ماتعملش: " + e.message); } btn.disabled = false; return; }
   try {
     const ExcelJS = await loadExcelJS();
     const buf = await buildReportWorkbook(ExcelJS, R).xlsx.writeBuffer();

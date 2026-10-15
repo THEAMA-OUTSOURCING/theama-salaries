@@ -287,7 +287,7 @@ td.n,th.n{text-align:center;font-variant-numeric:tabular-nums;}
       <div class="card">
         <h2>حساب جديد أو تعديل حساب</h2>
         <div class="grid-form">
-          <label>الإيميل<input type="email" id="ac-email" placeholder="dmn@theama-egy.com" dir="ltr"></label>
+          <label>الإيميل<input type="email" id="ac-email" placeholder="name@theama-egy.com" dir="ltr"></label>
           <label>الدور<select id="ac-role"><option value="supervisor">مشرف / إقليمي</option><option value="hr">HR</option><option value="accountant">محاسب</option></select></label>
           <label class="wide">المواقع (للمشرف بس — من غير مواقع = الحساب المشترك)<span id="ac-sites" class="row" style="gap:12px;color:#222;"></span></label>
           <label class="row" style="flex-direction:row;gap:6px;color:#222;"><input type="checkbox" id="ac-disabled"> الحساب متوقف</label>
@@ -412,7 +412,7 @@ onAuthStateChanged(auth, async user => {
   $("who").textContent = (user.email || "") + " — " + ({ admin: "أدمن", hr: "HR", accountant: "محاسب" }[role]);
   $("app").classList.remove("hidden");
   await loadAll();
-  if (role === "admin") initAccounts();
+  if (role === "admin") { await loadAdminConfig(); initAccounts(); }
   initWorkers();
   initBlacklist();
 });
@@ -826,7 +826,32 @@ $("s-save").addEventListener("click", async () => {
   } catch (err) { show(msg, "err", "ماتحفظتش: " + err.message); }
 });
 // ===== الحسابات (أدمن بس — التنفيذ على السيرفر worker.py) =====
-const PLANNED = [
+// ===== إعدادات الإدارة: من Firestore (config/admin) — الأدمن بس يقدر يقراها =====
+// SEED_* دي مؤقتة: أول ما الأدمن يفتح الصفحة، لو config/admin مش موجود، بتتنقل لـ Firestore.
+// بعد ما نتأكد إن النقل تمّ، القوايم دي هتتشال من الكود خالص.
+let PLANNED = [], FICHE_EXCEPTION_EMAIL = "", SHARED_EMAIL = "";
+async function loadAdminConfig() {
+  const ref = doc(db, "config", "admin");
+  try {
+    let snap = await getDoc(ref);
+    if (!snap.exists()) {
+      await setDoc(ref, { planned: SEED_PLANNED, fiche_exception_email: SEED_FICHE_EMAIL, shared_email: SEED_SHARED_EMAIL,
+        updated_by: auth.currentUser.uid, updated_at: serverTimestamp() });
+      snap = await getDoc(ref);
+    }
+    const rg = doc(db, "config", "regionals");
+    if (!(await getDoc(rg)).exists()) await setDoc(rg, { emails: SEED_REGIONALS, updated_at: serverTimestamp() });
+    const c = snap.data() || {};
+    PLANNED = c.planned || []; FICHE_EXCEPTION_EMAIL = (c.fiche_exception_email || "").toLowerCase(); SHARED_EMAIL = (c.shared_email || "").toLowerCase();
+  } catch (e) {
+    // الـ Rules الجديدة لسه مااتنشرتش: نشتغل بالقوايم اللي في الكود زي الأول
+    console.warn("config/admin:", e.message);
+    PLANNED = SEED_PLANNED; FICHE_EXCEPTION_EMAIL = SEED_FICHE_EMAIL; SHARED_EMAIL = SEED_SHARED_EMAIL;
+  }
+}
+const SEED_REGIONALS = ["rbh@theama-egy.com", "ralx@theama-egy.com", "rdlt@theama-egy.com"];
+const SEED_SHARED_EMAIL = "supervisor@theama-egy.com";
+const SEED_PLANNED = [
   { email: "dmn@theama-egy.com", label: "دمنهور", role: "supervisor", sites: ["دمنهور"] },
   { email: "kd@theama-egy.com", label: "كفر الدوار", role: "supervisor", sites: ["كفر الدوار"] },
   { email: "amb@theama-egy.com", label: "فرع العامرية + العجمي", role: "supervisor", sites: ["فرع العامرية", "فرع العجمى"] },
@@ -912,7 +937,7 @@ function saveAccount() {
   const email = $("ac-email").value.trim().toLowerCase(), role = $("ac-role").value;
   const sites = role === "supervisor" ? [...$("ac-sites").querySelectorAll("input:checked")].map(i => i.value) : [];
   if (!email || !email.includes("@")) return show($("ac-msg"), "err", "اكتب الإيميل.");
-  if (role === "supervisor" && !sites.length && email !== "supervisor@theama-egy.com"
+  if (role === "supervisor" && !sites.length && email !== SHARED_EMAIL
       && !confirm("مشرف من غير مواقع = نفس صلاحيات الحساب المشترك (كل العمال ما عدا مواقع الحضور). متأكد؟")) return;
   return runAccountTask("account_save", { email, role, sites, disabled: $("ac-disabled").checked });
 }
@@ -997,7 +1022,7 @@ function renderRem() {
         : `<button class="btn sec small" data-left="${esc(x.code)}" data-rsite="${esc(x.site)}" data-rname="${esc(x.name)}">${!WS.base.some(w => w.code === x.code) && newOf(x) ? "ارفضه (اتضاف بالغلط)" : "سجّل إنه مشي"}</button>`}</td></tr>`).join("")
       : `<tr><td colspan="6" class="muted">مفيش.</td></tr>`;
 }
-const FICHE_EXCEPTION_EMAIL = "myehia200@gmail.com";
+const SEED_FICHE_EMAIL = "myehia200@gmail.com";
 function ficheDue(first) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(first || "")) return null;
   const d = new Date(first + "T00:00:00"); let n = 5;

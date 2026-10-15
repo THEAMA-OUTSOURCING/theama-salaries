@@ -302,7 +302,13 @@ onAuthStateChanged(auth, async user => {
   let claims = {};
   try { claims = (await user.getIdTokenResult()).claims || {}; } catch (e) {}
   S.admin = claims.role === "admin";
-  S.regional = REGIONALS.includes((user.email || "").toLowerCase());
+  // الإقليمي: المستند config/regionals الـ Rules بتسمح بقرايته للإقليميين بس، فلو اتقري يبقى الحساب إقليمي.
+  // (مؤقتاً: لو القراية فشلت، بنرجع للقايمة اللي في الكود)
+  S.regional = false;
+  if (claims.role === "supervisor") {
+    try { S.regional = (await getDoc(doc(db, "config", "regionals"))).exists(); } catch (e) { S.regional = false; }
+    if (!S.regional) S.regional = REGIONALS.includes((user.email || "").toLowerCase());
+  }
   if (claims.role === "admin") S.sites = ATT_SITES;
   else if (claims.role === "supervisor" && Array.isArray(claims.sites) && claims.sites.length) S.sites = claims.sites;
   else { $("denied").classList.remove("hidden"); return; }

@@ -217,7 +217,7 @@ td.n,th.n{text-align:center;font-variant-numeric:tabular-nums;}
       <div class="card">
         <h2>البلاك ليست (ممنوع تشغيلهم تاني)</h2>
         <p class="muted" style="margin-bottom:8px;">أي رقم قومي هنا، المشرف مش هيقدر يضيفه للكشف ولا كبديل، وبيوصل تنبيه للإدارة. السبب مبيظهرش للمشرفين.</p>
-        <div class="row">
+        <div class="row" id="bl-form">
           <input id="bl-nid" placeholder="الرقم القومي" dir="ltr" style="width:170px">
           <input id="bl-name" placeholder="الاسم" style="width:220px">
           <select id="bl-reason"><option>سرقة</option><option>مخدرات</option><option>اعتداء / مشاجرة</option><option>تزوير</option><option>أخرى</option></select>
@@ -961,9 +961,12 @@ async function initWorkers() {
 }
 // ===== البلاك ليست =====
 function initBlacklist() {
+  // الإضافة والشيل للأدمن والـ HR بس (زي الـ Rules)، والمحاسب بيشوف القايمة بس
+  const canBL = S.role === "admin" || S.role === "hr";
+  $("bl-form").classList.toggle("hidden", !canBL);
   onSnapshot(collection(db, "blacklist_info"), snap => {
     const rows = snap.docs.map(d => d.data()).sort((a, b) => (b.at?.seconds || 0) - (a.at?.seconds || 0));
-    $("bl-list").innerHTML = rows.length ? rows.map(x => `<tr><td>${esc(x.name)}</td><td style="direction:ltr;text-align:right">${esc(x.nid)}</td><td>${esc(x.reason)}${x.note ? `<div class="muted">${esc(x.note)}</div>` : ""}</td><td class="muted">${esc(x.by_email || "")}</td><td><button class="btn sec small" data-blrm="${esc(x.nid)}">شيل</button></td></tr>`).join("")
+    $("bl-list").innerHTML = rows.length ? rows.map(x => `<tr><td>${esc(x.name)}</td><td style="direction:ltr;text-align:right">${esc(x.nid)}</td><td>${esc(x.reason)}${x.note ? `<div class="muted">${esc(x.note)}</div>` : ""}</td><td class="muted">${esc(x.by_email || "")}</td><td>${canBL ? `<button class="btn sec small" data-blrm="${esc(x.nid)}">شيل</button>` : ""}</td></tr>`).join("")
       : `<tr><td colspan="5" class="muted">مفيش.</td></tr>`;
   }, () => {});
   $("bl-add").onclick = async () => {

@@ -69,7 +69,7 @@ label.f{display:flex;flex-direction:column;gap:3px;font-size:12px;color:#777;}
     </div>
     <div class="card">
       <div class="row">
-        <label class="f">الحالة<select id="f-st"><option value="pending">مستني اعتماد</option><option value="approved">معتمد</option><option value="rejected">مرفوض</option><option value="">الكل</option></select></label>
+        <label class="f">الحالة<select id="f-st"><option value="pending">مستني اعتماد / اتعدل</option><option value="approved">معتمد</option><option value="rejected">مرفوض</option><option value="">الكل</option></select></label>
         <label class="f">النوع<select id="f-ty"><option value="">الكل</option><option value="sick">مرضي</option><option value="leave">إجازة</option><option value="resign">استقالة</option></select></label>
         <label class="f">بحث<input id="f-q" placeholder="الاسم أو الكود أو الرقم القومي"></label>
       </div>
@@ -180,10 +180,21 @@ onAuthStateChanged(auth, async user => {
 });
 ["f-st", "f-ty"].forEach(i => $(i).onchange = render); $("f-q").oninput = render;
 
+// إيه اللي اتغيّر في الشيت بعد القرار: القديم ← الجديد
+const CH_LABEL = { from: "من", to: "لحد", days: "الأيام", reason: "السبب", name: "الاسم", loc: "المكان", company: "الشركة", job: "الوظيفة", type: "النوع", kind: "نوع الإجازة", entry_date: "تاريخ التسجيل" };
+function changedHtml(e) {
+  const d = e.changed_data || {};
+  const show1 = (k, v) => k === "type" ? (TY[v] || v) : k === "kind" ? (KINDS[v] || v) : v;
+  const rows = Object.keys(d).filter(k => CH_LABEL[k] && String(d[k] ?? "").length < 120)
+    .map(k => `<li>${CH_LABEL[k]}: <s>${esc(show1(k, e[k]) || "—")}</s> ← <b>${esc(show1(k, d[k]) || "—")}</b></li>`);
+  return rows.length ? `<ul style="margin:4px 18px 0 0;padding:0;">${rows.join("")}</ul>` : "";
+}
 function render() {
   const st = $("f-st").value, ty = $("f-ty").value, q = $("f-q").value.trim();
-  const list = ALL.filter(e => (!st || e.status === st) && (!ty || e.type === ty) && (!q || [e.name, e.code, e.nid].some(x => String(x || "").includes(q))))
-    .sort((a, b) => (a.status === "pending" ? 0 : 1) - (b.status === "pending" ? 0 : 1) || String(b.entry_date).localeCompare(String(a.entry_date)));
+  // اللي اتعدل في الشيت بعد القرار بيظهر مع «مستني اعتماد» وفوق خالص، عشان محدش يفوّته
+  const needs = e => e.status === "pending" || !!e.changed;
+  const list = ALL.filter(e => (!st || e.status === st || (st === "pending" && e.changed)) && (!ty || e.type === ty) && (!q || [e.name, e.code, e.nid].some(x => String(x || "").includes(q))))
+    .sort((a, b) => (b.changed ? 1 : 0) - (a.changed ? 1 : 0) || (needs(a) ? 0 : 1) - (needs(b) ? 0 : 1) || String(b.entry_date).localeCompare(String(a.entry_date)));
   $("list").innerHTML = list.length ? list.map(e => `
     <div class="ev">
       <div class="ph" ${e.image ? `data-zoom="${e.id}"` : ""}>${e.image ? `<img src="${esc(e.image)}" alt="">` : `<span class="muted">${e.type === "leave" ? "الإجازة مالهاش صورة" : e.image_missing ? "الصورة مش لاقيها على Drive" : "مفيش صورة"}</span>`}</div>
@@ -198,7 +209,7 @@ function render() {
           ${e.edited && e.original ? `<dt>قبل التعديل</dt><dd>${esc(TY[e.original.type] || "")} ${esc(e.original.from || e.original.entry_date)}${e.original.to ? " → " + esc(e.original.to) : ""}</dd>` : ""}
           ${e.decided_email ? `<dt>القرار</dt><dd>${esc(e.decided_email)}${e.note ? ` — ${esc(e.note)}` : ""}</dd>` : ""}
         </dl>
-        ${e.changed ? `<div class="warn">السطر اتعدل في الشيت بعد القرار — راجعه</div>` : ""}
+        ${e.changed ? `<div class="warn">السطر اتعدل في الشيت بعد القرار — راجعه${changedHtml(e)}<div style="margin-top:4px;">«اعتماد» أو «رفض» بيتطبق على البيانات الجديدة دي.</div></div>` : ""}
         ${e.deleted_in_sheet ? `<div class="warn">السطر اتمسح من الشيت</div>` : ""}
       </div>
       ${EDIT === e.id ? `<div class="ft" style="flex-direction:column;align-items:stretch;background:#fffdf5">

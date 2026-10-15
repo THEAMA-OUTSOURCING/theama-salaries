@@ -988,14 +988,17 @@ function initBlacklist() {
     if (nid.length !== 14) return show($("bl-msg"), "err", "الرقم القومي لازم 14 رقم.");
     if (!confirm(`إضافة ${name || nid} للبلاك ليست؟`)) return;
     try {
-      await setDoc(doc(db, "blacklist", nid), { on: true });
-      await setDoc(doc(db, "blacklist_info", nid), { nid, name, reason: $("bl-reason").value, note: $("bl-note").value.trim(), by: u.uid, by_email: u.email || "", at: serverTimestamp() });
+      // الاتنين مع بعض: يا يتحفظوا الاتنين يا ولا واحد (عشان ميبقاش فيه عامل ممنوع ومش ظاهر في القايمة)
+      const b = writeBatch(db);
+      b.set(doc(db, "blacklist", nid), { on: true });
+      b.set(doc(db, "blacklist_info", nid), { nid, name, reason: $("bl-reason").value, note: $("bl-note").value.trim(), by: u.uid, by_email: u.email || "", at: serverTimestamp() });
+      await b.commit();
       ["bl-nid", "bl-name", "bl-note"].forEach(i => $(i).value = ""); show($("bl-msg"), "ok", "اتضاف.");
     } catch (e) { show($("bl-msg"), "err", "ماتضافش: " + (e.code === "permission-denied" ? "محتاج تحديث الـ Rules." : e.message)); }
   };
   $("bl-list").onclick = async e => {
     const nid = e.target.dataset.blrm; if (!nid || !confirm("تشيله من البلاك ليست؟")) return;
-    try { await deleteDoc(doc(db, "blacklist", nid)); await deleteDoc(doc(db, "blacklist_info", nid)); } catch (er) { show($("bl-msg"), "err", er.message); }
+    try { const b = writeBatch(db); b.delete(doc(db, "blacklist", nid)); b.delete(doc(db, "blacklist_info", nid)); await b.commit(); } catch (er) { show($("bl-msg"), "err", er.message); }
   };
 }
 function renderRem() {

@@ -257,17 +257,19 @@ function period() {
 // ===== حالات الشرقية المعتمدة من الـ HR (إجازة / مرضي / استقالة) من تطبيق Drive =====
 const SHARQIA = "الشرقية للدخان";
 async function applySharqiaEvents(list, from, to) {
-  const rows = list.filter(r => r.site === SHARQIA); if (!rows.length) return;
+  const rows = list; if (!rows.length) return;
   let codes = {}, evs = [];
   try { const m = await getDoc(doc(db, "sharqia_map", "codes")); codes = m.exists() ? m.data().codes || {} : {}; } catch (e) {}
   try {
-    const sn = await getDocs(query(collection(db, "hr_events"), where("source", "==", "sharqia_drive"), where("status", "==", "approved")));
+    const sn = await getDocs(query(collection(db, "hr_events"), where("status", "==", "approved")));
     sn.forEach(d => evs.push(d.data()));
   } catch (e) {}
-  const byCode = {}; rows.forEach(r => { byCode[r.code] = r; if (!r.nid && codes[r.code]?.nid) r.nid = codes[r.code].nid; });
+  const byCode = {}, byNid = {};
+  rows.forEach(r => { if (r.site === SHARQIA && !r.nid && codes[r.code]?.nid) r.nid = codes[r.code].nid; byCode[r.site + "|" + r.code] = r; if (r.nid) byNid[r.nid] = r; });
+  const KIND = { annual: ["ج", "إجازة سنوي"], casual: ["ع", "إجازة عارضة"], unpaid: ["ب", "إجازة بدون أجر"] };
   const isFri = d => new Date(d + "T00:00").getDay() === 5;
   for (const e of evs) {
-    const r = byCode[e.code]; if (!r) continue;
+    const r = (e.nid && byNid[e.nid]) || (e.source === "sharqia_drive" ? byCode[SHARQIA + "|" + e.code] : null); if (!r) continue;
     if (e.type === "resign") {
       if (!e.entry_date || e.entry_date > to) continue;
       r.resigned = e.entry_date;
@@ -275,12 +277,12 @@ async function applySharqiaEvents(list, from, to) {
       continue;
     }
     if (!e.from) continue;
-    const code = e.type === "sick" ? "م" : "ج";
+    const [code, lbl] = e.type === "sick" ? ["م", "مرضي"] : (KIND[e.kind] || ["ج", "إجازة"]);
     for (let d = new Date(e.from + "T00:00"); ymd(d) <= (e.to || e.from); d.setDate(d.getDate() + 1)) {
       const k = ymd(d); if (k < from || k > to || isFri(k)) continue;
       const c = r.cells[k];
-      if (c?.p) { c.conf = (e.type === "sick" ? "مرضي" : "إجازة") + " معتمد والشيت بيقول حاضر"; continue; }
-      r.cells[k] = { v: code, p: 0, l: true, app: true, ev: (e.type === "sick" ? "مرضي" : "إجازة") + ` معتمد ${e.from} → ${e.to}` };
+      if (c?.p) { c.conf = lbl + " معتمد والشيت بيقول حاضر"; continue; }
+      r.cells[k] = { v: code, p: 0, l: true, app: true, ev: lbl + ` معتمد ${e.from} → ${e.to}` };
     }
   }
 }
@@ -316,7 +318,7 @@ $("r-go").onclick = async () => {
       });
     }
     let list = Object.values(rows);
-    if (S.office && (site === "*" || site === SHARQIA)) await applySharqiaEvents(list, from, to);
+    if (S.office) await applySharqiaEvents(list, from, to);
     if (!list.length) { $("r-out").classList.add("hidden"); return show($("r-msg"), "warn", "مفيش حضور متأكد في الفترة دي."); }
     const jobs = [...new Set(list.map(r => r.job))].sort();
     $("r-job").innerHTML = `<option value="">كل الوظايف</option>` + jobs.map(j => `<option ${j === jobF ? "selected" : ""}>${esc(j)}</option>`).join("");

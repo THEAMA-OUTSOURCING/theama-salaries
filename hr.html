@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>اعتماد الحالات - Theama</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&display=swap">
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
@@ -57,8 +58,14 @@ label.f{display:flex;flex-direction:column;gap:3px;font-size:12px;color:#777;}
 
   <div id="app" class="hidden">
     <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:10px;">
-      <div><h1>اعتماد الحالات — الشرقية</h1><div class="muted" id="who"></div></div>
+      <div><h1>اعتماد الحالات (إجازات / مرضي / استقالات)</h1><div class="muted" id="who"></div></div>
       <div class="row"><a href="report.html" class="btn sec small" style="text-decoration:none;">تقارير الحضور</a><select onchange="if(this.value)location.href=this.value" style="padding:4px 8px;font-size:12px;border-radius:8px;"><option value="">انتقل إلى…</option><option value="attendance.html">تسجيل الحضور اليومي</option><option value="report.html">تقارير الحضور والاعتماد</option><option value="plan.html">الاحتياج والأعداد والحسابات</option><option value="upload.html">رفع حضور إكسيل</option><option value="hr.html">اعتماد حالات الشرقية</option><option value="index.html">لوحة الرواتب (البوابة)</option></select><button class="btn sec small" id="logout">خروج</button></div>
+    </div>
+    <div class="card">
+      <h2>رفع إجازات ومرضي من إكسيل (شيبسي / بيبسي / الإمداد / الشرقية)</h2>
+      <p class="muted" style="margin-bottom:8px;">نزّل الشكل، املاه (سطر لكل إجازة أو مرضي)، وارفعه. كل سطر بيدخل هنا «مستني اعتماد»، وبعد الاعتماد بيظهر في تقرير الحضور: ج سنوي، ع عارضة، ب بدون أجر، م مرضي. الجمعة مش بتتحسب في عدد الأيام.</p>
+      <div class="row"><button class="btn sec" id="tpl">تنزيل الشكل (Excel)</button><input type="file" id="xf" accept=".xlsx,.xls" style="max-width:320px"><button class="btn" id="xsave" disabled>ارفع</button></div>
+      <div class="msg" id="xmsg"></div>
     </div>
     <div class="card">
       <div class="row">
@@ -76,7 +83,7 @@ label.f{display:flex;flex-direction:column;gap:3px;font-size:12px;color:#777;}
 
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-import { getFirestore, collection, doc, getDoc, query, where, onSnapshot, updateDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { getFirestore, collection, doc, getDoc, query, where, onSnapshot, updateDoc, setDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 const app = initializeApp({
   apiKey: "AIzaSyBscBbgFrEd76NjDgNPpymF1nmlvlpprdg",
@@ -91,7 +98,57 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 function show(el, t, x) { el.className = "msg show " + t; el.textContent = x; }
 const TY = { sick: "مرضي", leave: "إجازة", resign: "استقالة" }, ST = { pending: "مستني اعتماد", approved: "معتمد", rejected: "مرفوض" };
-let ALL = [], EDIT = null;
+let ALL = [], EDIT = null, XROWS = [];
+const KINDS = { annual: "سنوي", casual: "عارضة", unpaid: "بدون أجر" };
+// ===== رفع إكسيل =====
+const HEAD = ["الشركة", "الموقع", "الرقم القومي", "الكود", "الاسم", "النوع (سنوي / عارضة / بدون أجر / مرضي)", "من", "لحد", "ملاحظات"];
+$("tpl").onclick = () => {
+  const ws = XLSX.utils.aoa_to_sheet([HEAD, ["شيبسي", "قطامية", "29001010101010", "", "مثال — امسح السطر ده", "سنوي", "2026-10-20", "2026-10-22", ""]]);
+  ws["!cols"] = HEAD.map((h, i) => ({ wch: i === 4 ? 30 : i === 5 ? 34 : 16 }));
+  const wb = XLSX.utils.book_new(); wb.Workbook = { Views: [{ RTL: true }] }; XLSX.utils.book_append_sheet(wb, ws, "إجازات ومرضي");
+  XLSX.writeFile(wb, "شكل رفع الإجازات والمرضي.xlsx");
+};
+const pad2 = n => String(n).padStart(2, "0");
+function toISO(v) {
+  if (v instanceof Date && !isNaN(v)) { const u = new Date(Math.round((v.getTime() - v.getTimezoneOffset() * 60000) / 864e5) * 864e5); return u.getUTCFullYear() + "-" + pad2(u.getUTCMonth() + 1) + "-" + pad2(u.getUTCDate()); }
+  const t = String(v ?? "").trim(); let m;
+  if ((m = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/))) return m[1] + "-" + pad2(m[2]) + "-" + pad2(m[3]);
+  if ((m = t.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/))) return m[3] + "-" + pad2(m[2]) + "-" + pad2(m[1]);   // يوم/شهر/سنة
+  return "";
+}
+const kindOf = t => /مرض/.test(t) ? ["sick", ""] : /عارض/.test(t) ? ["leave", "casual"] : /بدون/.test(t) ? ["leave", "unpaid"] : /سنو|اجاز|إجاز/.test(t) ? ["leave", "annual"] : [null, null];
+function workDays(f, t) { let n = 0; for (let d = new Date(f + "T00:00"); d <= new Date(t + "T00:00"); d.setDate(d.getDate() + 1)) if (d.getDay() !== 5) n++; return n; }
+$("xf").onchange = async () => {
+  XROWS = []; $("xsave").disabled = true;
+  const f = $("xf").files[0]; if (!f) return;
+  try {
+    const wb = XLSX.read(await f.arrayBuffer(), { cellDates: true });
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true, defval: "" }).slice(1);
+    const bad = [];
+    rows.forEach((r, i) => {
+      if (!r.some(v => String(v).trim())) return;
+      const nid = String(r[2]).replace(/\D/g, ""), code = String(r[3]).trim(), [type, kind] = kindOf(String(r[5])), from = toISO(r[6]), to = toISO(r[7]) || from;
+      const why = (!nid && !code) ? "مفيش رقم قومي ولا كود" : (nid && nid.length !== 14) ? "الرقم القومي مش 14 رقم" : !type ? "النوع مش مفهوم" : !from ? "تاريخ «من» مش مفهوم" : to < from ? "«لحد» قبل «من»" : "";
+      if (why) return bad.push(`سطر ${i + 2}: ${why}`);
+      XROWS.push({ source: "excel_hr", company: String(r[0]).trim(), loc: String(r[1]).trim(), nid, code, name: String(r[4]).trim(), type, kind, type_ar: TY[type],
+        from, to, days: String(workDays(from, to)), reason: String(r[8]).trim() });
+    });
+    show($("xmsg"), bad.length ? "err" : "ok", `${XROWS.length} سطر سليم` + (bad.length ? ` — و${bad.length} فيهم مشكلة ومش هيترفعوا:\n` + bad.slice(0, 20).join("\n") : ""));
+    $("xsave").disabled = !XROWS.length;
+  } catch (e) { show($("xmsg"), "err", "الملف ماتقراش: " + e.message); }
+};
+$("xsave").onclick = async () => {
+  const u = auth.currentUser, today = new Date().toISOString().slice(0, 10); let n = 0;
+  $("xsave").disabled = true;
+  try {
+    for (const r of XROWS) {
+      const id = `xl__${r.nid || r.code}__${r.from}__${r.type}${r.kind ? "_" + r.kind : ""}`;
+      await setDoc(doc(db, "hr_events", id), { ...r, entry_date: today, status: "pending", by_email: u.email || "", uploaded_by: u.uid, created_at: serverTimestamp() });
+      n++;
+    }
+    show($("xmsg"), "ok", `اترفع ${n} سطر — هتلاقيهم تحت «مستني اعتماد».`); $("xf").value = ""; XROWS = [];
+  } catch (e) { show($("xmsg"), "err", `اترفع ${n} بس: ` + (e.code === "permission-denied" ? "محتاج تحديث الـ Rules." : e.message)); }
+};
 
 $("l-btn").onclick = async () => { try { await signInWithEmailAndPassword(auth, $("l-email").value.trim(), $("l-pass").value); } catch (e) { show($("l-err"), "err", "الإيميل أو الباسورد غلط"); } };
 $("logout").onclick = () => signOut(auth); $("d-out").onclick = () => signOut(auth);
@@ -101,7 +158,7 @@ onAuthStateChanged(auth, async user => {
   let role = null; try { role = (await user.getIdTokenResult()).claims.role || null; } catch (e) {}
   if (!["admin", "hr"].includes(role)) return $("denied").classList.remove("hidden");
   $("who").textContent = user.email; $("app").classList.remove("hidden");
-  onSnapshot(query(collection(db, "hr_events"), where("source", "==", "sharqia_drive")), snap => {
+  onSnapshot(collection(db, "hr_events"), snap => {
     ALL = snap.docs.map(d => ({ id: d.id, ...d.data() })); render();
   }, err => show($("msg"), "err", "مش قادر أقرا الحالات: " + (err.code === "permission-denied" ? "محتاج تحديث الـ Rules (hr_events)." : err.message)));
   try { const s = await getDoc(doc(db, "admin_tasks_status", "sharqia_sync")); const t = s.data()?.last_run?.toDate?.(); if (t) $("sync").textContent = "آخر تحديث: " + t.toLocaleString("ar-EG"); } catch (e) {}
@@ -116,10 +173,10 @@ function render() {
     <div class="ev">
       <div class="ph" ${e.image ? `data-zoom="${e.id}"` : ""}>${e.image ? `<img src="${e.image}" alt="">` : `<span class="muted">${e.type === "leave" ? "الإجازة مالهاش صورة" : e.image_missing ? "الصورة مش لاقيها على Drive" : "مفيش صورة"}</span>`}</div>
       <div class="bd">
-        <div class="row" style="justify-content:space-between;align-items:center;"><span class="nm">${esc(e.name)}</span><span><span class="pill t-${e.type}">${TY[e.type]}</span> <span class="pill s-${e.status}">${ST[e.status] || e.status}</span></span></div>
+        <div class="row" style="justify-content:space-between;align-items:center;"><span class="nm">${esc(e.name)}</span><span><span class="pill t-${e.type}">${TY[e.type]}${e.kind ? " " + (KINDS[e.kind] || "") : ""}</span> <span class="pill s-${e.status}">${ST[e.status] || e.status}</span></span></div>
         <dl>
           <dt>الكود</dt><dd>${esc(e.code)}${e.nid ? ` — <span dir="ltr">${esc(e.nid)}</span>` : ""}</dd>
-          <dt>المكان</dt><dd>${esc(e.loc)} — ${esc(e.job)}</dd>
+          <dt>المكان</dt><dd>${esc([e.company, e.loc, e.job].filter(Boolean).join(" — "))}</dd>
           ${e.type === "resign" ? `<dt>السبب</dt><dd>${esc(e.reason)}</dd><dt>من تاريخ</dt><dd>${esc(e.entry_date)} (يوم التسجيل)</dd>`
             : `<dt>من</dt><dd>${esc(e.from)} لحد ${esc(e.to)} — ${esc(e.days)} يوم</dd>`}
           <dt>اتسجل</dt><dd>${esc(e.entry_date)} — ${esc(e.by_email)}</dd>

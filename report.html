@@ -117,7 +117,8 @@ tr.foot td{background:#f3f3ef;font-weight:600;}
         <div class="msg" id="a-msg"></div>
         <div class="tbl" style="margin-top:10px;"><table class="list" style="width:100%"><thead><tr><th>الموقع</th><th>اليوم</th><th>حاضر</th><th>غايب</th><th>بدلاء</th><th>اتعدّل من المشرف</th><th>أكّده</th><th>الحالة</th><th></th></tr></thead><tbody id="a-list"></tbody></table></div>
       </div>
-      <div class="card hidden" id="a-detail"><h2 id="a-dtitle"></h2><div class="tbl"><table class="list" style="width:100%"><thead><tr><th>الاسم</th><th>الوظيفة</th><th>الحالة</th><th>قراءة الصورة</th><th>البديل</th><th>ملاحظة</th></tr></thead><tbody id="a-dlist"></tbody></table></div></div>
+      <div class="card hidden" id="a-detail"><h2 id="a-dtitle"></h2>
+        <div class="row" id="a-edit-bar" style="margin-bottom:8px;"><span class="muted">تقدر تغيّر حالة أي عامل من هنا وبعدين:</span><button class="btn small" id="a-esave">احفظ التعديل واعتمد</button></div><div class="tbl"><table class="list" style="width:100%"><thead><tr><th>الاسم</th><th>الوظيفة</th><th>الحالة</th><th>قراءة الصورة</th><th>البديل</th><th>ملاحظة</th></tr></thead><tbody id="a-dlist"></tbody></table></div></div>
     </section>
 
     <!-- العطلات -->
@@ -425,15 +426,30 @@ $("a-list").onclick = async e => {
   if (t.dataset.view) {
     const d = A[+t.dataset.view];
     $("a-dtitle").textContent = `${d.site} — ${d.date}`;
+    A.cur = d;
+    $("a-edit-bar").classList.toggle("hidden", !(canAp(d) || d.status === "approved"));
     const ai = { P: "حاضر", A: "غايب", U: "مش واضح", "": "مالوش صف" };
     $("a-dlist").innerHTML = Object.values(d.entries || {}).sort((a, b) => (a.s === "A") === (b.s === "A") ? 0 : a.s === "A" ? -1 : 1).map(x =>
-      `<tr><td>${esc(x.name || "")}</td><td>${esc(x.job || "")}</td><td>${x.s === "P" ? "حاضر" : "<b style='color:#a32d2d'>غايب</b>"}</td><td>${ai[x.ai ?? ""] || ""}${x.by === "sup" ? " <span class='pill p-wait'>المشرف غيّرها</span>" : ""}</td><td>${esc(x.rep?.name || "")}</td><td>${esc(x.note || "")}</td></tr>`).join("");
+      `<tr><td>${esc(x.name || "")}</td><td>${esc(x.job || "")}</td><td>${x.s === "P" || x.s === "A" ? `<select data-ecode="${esc(Object.keys(d.entries).find(k => d.entries[k] === x))}"><option value="P" ${x.s === "P" ? "selected" : ""}>حاضر</option><option value="A" ${x.s === "A" ? "selected" : ""}>غايب</option></select>` : esc(x.c || "")}</td><td>${ai[x.ai ?? ""] || ""}${x.by === "sup" ? " <span class='pill p-wait'>المشرف غيّرها</span>" : ""}</td><td>${esc(x.rep?.name || "")}</td><td>${esc(x.note || "")}</td></tr>`).join("");
     $("a-detail").classList.remove("hidden"); $("a-detail").scrollIntoView({ behavior: "smooth" });
     return;
   }
   const i = t.dataset.ap ?? t.dataset.un; if (i === undefined) return;
   if (t.dataset.un && !confirm("تلغي الاعتماد؟ الإقليمي هيقدر يعدّل اليوم تاني.")) return;
   try { await setStatus(A[+i], !!t.dataset.ap); $("a-go").click(); } catch (er) { show($("a-msg"), "err", "مااتحفظش: " + er.message); }
+};
+$("a-esave").onclick = async () => {
+  const d = A.cur; if (!d) return;
+  const entries = JSON.parse(JSON.stringify(d.entries || {})); let n = 0;
+  document.querySelectorAll("#a-dlist [data-ecode]").forEach(sel => { const e = entries[sel.dataset.ecode]; if (e && e.s !== sel.value) { e.s = sel.value; e.by = "acc"; n++; } });
+  if (!n && d.status === "approved") return show($("a-msg"), "info", "مفيش تغيير.");
+  if (!confirm(`${n ? `تعديل ${n} عامل و` : ""}اعتماد ${d.site} يوم ${d.date}؟`)) return;
+  const v = Object.values(entries), u = auth.currentUser;
+  try {
+    await updateDoc(doc(db, "att_days", d.id), { entries, counts: { ...(d.counts || {}), present: v.filter(e => e.s === "P").length, absent: v.filter(e => e.s === "A").length },
+      status: "approved", approved_by: u.uid, approved_email: u.email || "", approved_at: serverTimestamp(), edited_by: u.email || "", edited_n: n });
+    show($("a-msg"), "ok", "اتعدل واتعتمد."); $("a-detail").classList.add("hidden"); $("a-go").click();
+  } catch (er) { show($("a-msg"), "err", "ماتحفظش: " + (er.code === "permission-denied" ? "محتاج تحديث الـ Rules." : er.message)); }
 };
 $("a-all").onclick = async () => {
   const pend = A.filter(canAp);

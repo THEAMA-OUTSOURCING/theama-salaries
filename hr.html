@@ -91,7 +91,7 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 function show(el, t, x) { el.className = "msg show " + t; el.textContent = x; }
 const TY = { sick: "مرضي", leave: "إجازة", resign: "استقالة" }, ST = { pending: "مستني اعتماد", approved: "معتمد", rejected: "مرفوض" };
-let ALL = [];
+let ALL = [], EDIT = null;
 
 $("l-btn").onclick = async () => { try { await signInWithEmailAndPassword(auth, $("l-email").value.trim(), $("l-pass").value); } catch (e) { show($("l-err"), "err", "الإيميل أو الباسورد غلط"); } };
 $("logout").onclick = () => signOut(auth); $("d-out").onclick = () => signOut(auth);
@@ -123,19 +123,43 @@ function render() {
           ${e.type === "resign" ? `<dt>السبب</dt><dd>${esc(e.reason)}</dd><dt>من تاريخ</dt><dd>${esc(e.entry_date)} (يوم التسجيل)</dd>`
             : `<dt>من</dt><dd>${esc(e.from)} لحد ${esc(e.to)} — ${esc(e.days)} يوم</dd>`}
           <dt>اتسجل</dt><dd>${esc(e.entry_date)} — ${esc(e.by_email)}</dd>
+          ${e.edited && e.original ? `<dt>قبل التعديل</dt><dd>${esc(TY[e.original.type] || "")} ${esc(e.original.from || e.original.entry_date)}${e.original.to ? " → " + esc(e.original.to) : ""}</dd>` : ""}
           ${e.decided_email ? `<dt>القرار</dt><dd>${esc(e.decided_email)}${e.note ? ` — ${esc(e.note)}` : ""}</dd>` : ""}
         </dl>
         ${e.changed ? `<div class="warn">السطر اتعدل في الشيت بعد القرار — راجعه</div>` : ""}
         ${e.deleted_in_sheet ? `<div class="warn">السطر اتمسح من الشيت</div>` : ""}
       </div>
+      ${EDIT === e.id ? `<div class="ft" style="flex-direction:column;align-items:stretch;background:#fffdf5">
+        <label class="f">النوع<select data-et><option value="sick" ${e.type === "sick" ? "selected" : ""}>مرضي</option><option value="leave" ${e.type === "leave" ? "selected" : ""}>إجازة</option><option value="resign" ${e.type === "resign" ? "selected" : ""}>استقالة</option></select></label>
+        <div class="row"><label class="f">من (أو تاريخ الاستقالة)<input type="date" data-ef value="${esc(e.type === "resign" ? e.entry_date : e.from)}"></label>
+        <label class="f">لحد<input type="date" data-eto value="${esc(e.to || "")}"></label></div>
+        <input placeholder="سبب التعديل" data-note="${e.id}">
+        <div class="row"><button class="btn ok small" data-esave="${e.id}">احفظ واعتمد</button><button class="btn sec small" data-ecancel="1">إلغاء</button></div></div>` : ""}
       <div class="ft">${e.status === "pending" || e.changed
-        ? `<input placeholder="ملاحظة (اختياري)" data-note="${e.id}" style="flex:1;min-width:120px;"><button class="btn ok small" data-ap="${e.id}">اعتماد</button><button class="btn sec small" data-rj="${e.id}">رفض</button>`
+        ? `<input placeholder="ملاحظة (اختياري)" data-note="${e.id}" style="flex:1;min-width:120px;"><button class="btn ok small" data-ap="${e.id}">اعتماد</button><button class="btn sec small" data-ed="${e.id}">تعديل</button><button class="btn sec small" data-rj="${e.id}">رفض</button>`
         : `<button class="btn sec small" data-back="${e.id}">رجّعها مستنية</button>`}</div>
     </div>`).join("") : `<div class="card muted">مفيش حالات.</div>`;
 }
 $("list").onclick = async e => {
   const z = e.target.closest("[data-zoom]");
   if (z) { $("zoom-img").src = ALL.find(x => x.id === z.dataset.zoom).image; return $("zoom").classList.remove("hidden"); }
+  if (e.target.dataset.ed) { EDIT = e.target.dataset.ed; return render(); }
+  if (e.target.dataset.ecancel) { EDIT = null; return render(); }
+  if (e.target.dataset.esave) {
+    const id = e.target.dataset.esave, box = e.target.closest(".ft"), ev = ALL.find(x => x.id === id), u = auth.currentUser;
+    const type = box.querySelector("[data-et]").value, f = box.querySelector("[data-ef]").value, t = box.querySelector("[data-eto]").value;
+    const note = box.querySelector("[data-note]").value.trim();
+    if (!f || (type !== "resign" && (!t || t < f))) return show($("msg"), "err", "التواريخ مش مظبوطة.");
+    let days = "";
+    if (type !== "resign") { let n = 0; for (let d = new Date(f + "T00:00"); d <= new Date(t + "T00:00"); d.setDate(d.getDate() + 1)) if (d.getDay() !== 5) n++; days = String(n); }
+    const upd = { type, type_ar: TY[type], status: "approved", edited: true, note: note || "اتعدل من الـ HR",
+      original: ev.original || { type: ev.type, from: ev.from || "", to: ev.to || "", entry_date: ev.entry_date || "" },
+      decided_by: u.uid, decided_email: u.email || "", decided_at: serverTimestamp(), changed: false };
+    if (type === "resign") Object.assign(upd, { entry_date: f, from: "", to: "", days: "" }); else Object.assign(upd, { from: f, to: t, days });
+    try { await updateDoc(doc(db, "hr_events", id), upd); EDIT = null; show($("msg"), "ok", "اتعدل واتعتمد."); }
+    catch (er) { show($("msg"), "err", "ماتحفظش: " + er.message); }
+    return;
+  }
   const id = e.target.dataset.ap || e.target.dataset.rj || e.target.dataset.back; if (!id) return;
   const u = auth.currentUser, note = document.querySelector(`[data-note="${id}"]`)?.value.trim() || "";
   const ev = ALL.find(x => x.id === id);

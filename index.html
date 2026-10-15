@@ -735,7 +735,9 @@ async function doLogin(){
       resetBtn(); return;
     }
     // 2) بعد الدخول: جيب كشف الراتب بتاعه بس
-    const q = query(collection(db,'payroll'), where('employee_code','==',code));
+    // الكود الحقيقي = uid الحساب (مش اللي اتكتب)، عشان لو اتكتب بحروف small الدخول بينجح والـ Rules بتقارن بالـ uid
+    const myCode = auth.currentUser.uid;
+    const q = query(collection(db,'payroll'), where('employee_code','==',myCode));
     const snap = await getDocs(q);
     if(snap.empty){
       await signOut(auth);
@@ -744,7 +746,7 @@ async function doLogin(){
     }
     const rows = snap.docs.map(d=>d.data().data);
     const nationalId = snap.docs[0].data().national_id;
-    loggedUser = {code, rows, nationalId};
+    loggedUser = {code: myCode, rows, nationalId};
 
     // 3) لو داخل بالرقم القومي (أول مرة أو بعد إعادة تعيين) — لازم يغيّره
     if(pass === nationalId){

@@ -516,7 +516,7 @@ function render() {
         : res.count === calc ? `<span class="pill p-ok">العدد ${fmt(calc)} ✓</span>`
         : `<span class="pill p-warn">مكتوب ${fmt(res.count)} / محسوب ${fmt(calc)}</span>`);
     const mine = p.uploaded_by === auth.currentUser?.uid && p.status !== "reading" && S.day?.status !== "approved";
-    return `<div class="pg"><img src="data:image/jpeg;base64,${p.image}" data-view alt="صفحة">
+    return `<div class="pg"><img src="data:image/jpeg;base64,${esc(p.image)}" data-view alt="صفحة">
       <div class="b">${st}${mine ? `<div style="margin-top:6px;"><button class="btn sec small" data-del="${p.id}">مسح</button></div>` : ""}</div></div>`;
   }).join("");
 
@@ -839,12 +839,15 @@ $("m-add").addEventListener("click", () => openId("roster"));
 
 // ===== البطاقة =====
 const ID = { purpose: null, target: null, check: null, result: null, unsub: null, front: null, back: null };
-async function compressCard(file) {
+// limit = أقصى طول للصورة (base64). البطاقة: صورتين × 460 ألف (حد الـ Rules 470 ألف).
+// الفيش: لحد 3 صور في مستند واحد، والمستند في Firestore حده 1 ميجا → كل صورة أقل من 300 ألف.
+const FICHE_LIMIT = 300000;
+async function compressCard(file, limit = 460000, maxSide = 1400) {
   const bmp = await createImageBitmap(file, { imageOrientation: "from-image" });
-  const k = Math.min(1, 1400 / Math.max(bmp.width, bmp.height));
+  const k = Math.min(1, maxSide / Math.max(bmp.width, bmp.height));
   const c = document.createElement("canvas"); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
   c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
-  for (const q of [0.85, 0.75, 0.65, 0.55, 0.45]) { const d = c.toDataURL("image/jpeg", q).split(",")[1]; if (d.length < 460000) return d; }
+  for (const q of [0.85, 0.75, 0.65, 0.55, 0.45, 0.35]) { const d = c.toDataURL("image/jpeg", q).split(",")[1]; if (d.length < limit) return d; }
   throw new Error("الصورة كبيرة جداً");
 }
 function openId(purpose, target) {
@@ -986,7 +989,7 @@ async function onFiche(e) {
   const files = [...e.target.files]; e.target.value = "";
   for (const f of files) {
     if (FM.imgs.length >= 3) break;
-    try { FM.imgs.push(await compressCard(f)); } catch (err) { show($("fm-msg"), "err", err.message); }
+    try { FM.imgs.push(await compressCard(f, FICHE_LIMIT, 1300)); } catch (err) { show($("fm-msg"), "err", err.message); }
   }
   renderFmThumbs();
 }

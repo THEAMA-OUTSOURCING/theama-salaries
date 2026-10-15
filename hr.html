@@ -138,15 +138,18 @@ $("xf").onchange = async () => {
   } catch (e) { show($("xmsg"), "err", "الملف ماتقراش: " + e.message); }
 };
 $("xsave").onclick = async () => {
-  const u = auth.currentUser, today = new Date().toISOString().slice(0, 10); let n = 0;
+  const u = auth.currentUser, today = new Date().toISOString().slice(0, 10); let n = 0, skipped = 0;
   $("xsave").disabled = true;
+  // الحالات المترفعة قبل كده مش بتتكتب تاني — عشان قرار الـ HR (اعتماد/رفض/تعديل) ميرجعش «مستني»
+  const existing = new Set(ALL.map(x => x.id));
   try {
     for (const r of XROWS) {
       const id = `xl__${r.nid || r.code}__${r.from}__${r.type}${r.kind ? "_" + r.kind : ""}`;
+      if (existing.has(id)) { skipped++; continue; }
       await setDoc(doc(db, "hr_events", id), { ...r, entry_date: today, status: "pending", by_email: u.email || "", uploaded_by: u.uid, created_at: serverTimestamp() });
-      n++;
+      existing.add(id); n++;
     }
-    show($("xmsg"), "ok", `اترفع ${n} سطر — هتلاقيهم تحت «مستني اعتماد».`); $("xf").value = ""; XROWS = [];
+    show($("xmsg"), "ok", `اترفع ${n} سطر — هتلاقيهم تحت «مستني اعتماد».` + (skipped ? ` (${skipped} سطر كانوا مترفعين قبل كده واتسابوا زي ما هم)` : "")); $("xf").value = ""; XROWS = [];
   } catch (e) { show($("xmsg"), "err", `اترفع ${n} بس: ` + (e.code === "permission-denied" ? "محتاج تحديث الـ Rules." : e.message)); }
 };
 
@@ -171,7 +174,7 @@ function render() {
     .sort((a, b) => (a.status === "pending" ? 0 : 1) - (b.status === "pending" ? 0 : 1) || String(b.entry_date).localeCompare(String(a.entry_date)));
   $("list").innerHTML = list.length ? list.map(e => `
     <div class="ev">
-      <div class="ph" ${e.image ? `data-zoom="${e.id}"` : ""}>${e.image ? `<img src="${e.image}" alt="">` : `<span class="muted">${e.type === "leave" ? "الإجازة مالهاش صورة" : e.image_missing ? "الصورة مش لاقيها على Drive" : "مفيش صورة"}</span>`}</div>
+      <div class="ph" ${e.image ? `data-zoom="${e.id}"` : ""}>${e.image ? `<img src="${esc(e.image)}" alt="">` : `<span class="muted">${e.type === "leave" ? "الإجازة مالهاش صورة" : e.image_missing ? "الصورة مش لاقيها على Drive" : "مفيش صورة"}</span>`}</div>
       <div class="bd">
         <div class="row" style="justify-content:space-between;align-items:center;"><span class="nm">${esc(e.name)}</span><span><span class="pill t-${e.type}">${TY[e.type]}${e.kind ? " " + (KINDS[e.kind] || "") : ""}</span> <span class="pill s-${e.status}">${ST[e.status] || e.status}</span></span></div>
         <dl>

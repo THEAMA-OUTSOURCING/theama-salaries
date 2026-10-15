@@ -241,22 +241,11 @@ img[data-zoom]{cursor:zoom-in;}
 </div>
 
 <script type="module">
-import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import { getFirestore, collection, addDoc, doc, getDoc, getDocs, setDoc, deleteDoc, query, where, onSnapshot, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+import { db, auth, ATT_SITES, REGIONALS, fetchPlanBase, planBySite } from './shared.js';
 
-const app = initializeApp({
-  apiKey: "AIzaSyBscBbgFrEd76NjDgNPpymF1nmlvlpprdg",
-  authDomain: "theama-salaries.firebaseapp.com",
-  projectId: "theama-salaries",
-  storageBucket: "theama-salaries.firebasestorage.app",
-  messagingSenderId: "469549638177",
-  appId: "1:469549638177:web:4e5c1d4c055108312cb960"
-});
-const db = getFirestore(app);
-const auth = getAuth(app);
 
-const ATT_SITES = ["فرع العامرية", "فرع العجمى", "مصنع العامرية", "دمنهور", "كفر الدوار", "المنصورة", "فرع طنطا", "طنطا مصنع"];
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const fmt = n => Number(n || 0).toLocaleString("ar-EG");
@@ -265,45 +254,13 @@ function hide(el) { el.className = "msg"; el.textContent = ""; }
 const pad = n => String(n).padStart(2, "0");
 const ymd = d => d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
 
-const REGIONALS = ["rbh@theama-egy.com", "ralx@theama-egy.com", "rdlt@theama-egy.com"]; // المديرين الإقليميين: مرحلة مراجعة بعد المشرف وقبل المحاسب
 const S = { regional: false, admin: false, sites: [], site: null, date: null, roster: [], pages: [], day: null, choice: {}, unsubPages: null, unsubDay: null, plan: {}, lateCount: 0, pool: [], rep: {}, removals: [], unsubRoster: null, unsubPool: null, unsubRem: null, newWorkers: [], unsubNew: null };
 
-// ===== العدد المطلوب من شيت الاحتياج (نفس حساب صفحة الإدارة) =====
-const pnorm = s => String(s ?? "").replace(/\s+/g, " ").trim();
-const pkey = s => pnorm(s).toLowerCase();
-const ckey = (loc, pos) => pnorm(loc) + "|" + pkey(pos);
+// ===== العدد المطلوب من شيت الاحتياج (الحساب نفسه في shared.js — نفس حساب صفحة الإدارة) =====
 async function loadPlan() {
   S.plan = {};
-  try {
-    const month = S.date.slice(0, 7);
-    const plans = await getDocs(collection(db, "plans"));
-    let pm = null, plan = null;
-    plans.forEach(d => { if (d.id <= month && (!pm || d.id > pm)) { pm = d.id; plan = d.data(); } });
-    if (!plan) return;
-    const [am, st] = await Promise.all([
-      getDocs(query(collection(db, "plan_amendments"), where("month", "==", pm))),
-      getDoc(doc(db, "plan_settings", "mapping"))
-    ]);
-    const amends = []; am.forEach(d => amends.push(d.data()));
-    amends.sort((a, b) => a.effective_date.localeCompare(b.effective_date) || ((a.created_at?.seconds || 0) - (b.created_at?.seconds || 0)));
-    const set = st.exists() ? st.data() : null; if (!set) return;
-    const day = pm === month ? S.date : pm + "-31";
-    const cmap = new Map();
-    plan.rows.forEach(r => { const k = ckey(r.loc, r.pos); const e = cmap.get(k) || { loc: pnorm(r.loc), pos: pnorm(r.pos), value: 0 }; e.value += Number(r.hc) || 0; cmap.set(k, e); });
-    cmap.forEach((e, k) => { const hits = amends.filter(a => ckey(a.loc, a.pos) === k && a.effective_date <= day); if (hits.length) e.value = hits[hits.length - 1].to; });
-    cmap.forEach(e => {
-      const job = set.posMap?.[pkey(e.pos)]; if (!job) return;
-      const split = (set.splits || []).find(x => ckey(x.loc, x.pos) === ckey(e.loc, e.pos));
-      if (split?.parts?.length) {
-        const sum = split.parts.reduce((a, p) => a + Number(p.count || 0), 0);
-        split.parts.forEach((p, i) => { if (pnorm(p.site) === S.site) S.plan[job] = (S.plan[job] || 0) + Number(p.count || 0) + (i === 0 ? e.value - sum : 0); });
-        return;
-      }
-      const ov = (set.overrides || []).find(o => ckey(o.loc, o.pos) === ckey(e.loc, e.pos));
-      const site = ov ? pnorm(ov.site) : set.locMap?.[pnorm(e.loc)];
-      if (site === S.site) S.plan[job] = (S.plan[job] || 0) + e.value;
-    });
-  } catch (e) { S.plan = {}; }
+  try { S.plan = planBySite(await fetchPlanBase(S.date.slice(0, 7)), S.date)[S.site] || {}; }
+  catch (e) { S.plan = {}; }
 }
 // أيام موقع في فترة بس (بدل كل أيام الموقع من البداية) — محتاج index على att_days: site + date.
 // لو الـ index لسه مااتعملش، بيرجع للطريقة القديمة عشان الصفحة متقفش.

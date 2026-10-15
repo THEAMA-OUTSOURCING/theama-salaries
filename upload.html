@@ -86,20 +86,11 @@ details ul{margin:6px 18px;font-size:12px;color:#555;max-height:260px;overflow:a
 </div>
 
 <script type="module">
-import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import { getFirestore, doc, getDoc, getDocs, collection, query, where, writeBatch, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+import { db, auth, fetchPlanBase, planBySite } from './shared.js';
 import { detect, parseChipsy, parseEmdad, parseSharqia, emdadMonths, counts, COMPANY_LABEL, CHIPSY_PLAN, countsForPlan } from './xl-attendance.js';
 
-const app = initializeApp({
-  apiKey: "AIzaSyBscBbgFrEd76NjDgNPpymF1nmlvlpprdg",
-  authDomain: "theama-salaries.firebaseapp.com",
-  projectId: "theama-salaries",
-  storageBucket: "theama-salaries.firebasestorage.app",
-  messagingSenderId: "469549638177",
-  appId: "1:469549638177:web:4e5c1d4c055108312cb960"
-});
-const db = getFirestore(app), auth = getAuth(app);
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 function show(el, t, x) { el.className = "msg show " + t; el.textContent = x; }
@@ -178,42 +169,15 @@ function renderPreview() {
 $("p-from").onchange = renderPreview; $("p-to").onchange = renderPreview;
 
 // ===== المخطط: شيبسي ثابت، الإمداد من مخطط بيبسي (نفس حساب صفحة الاحتياج)، الشرقية مالهاش مخطط =====
-const pnorm = s => String(s ?? "").replace(/\s+/g, " ").trim();
-const pkey = s => pnorm(s).toLowerCase();
-const ckey = (loc, pos) => pnorm(loc) + "|" + pkey(pos);
-const PLAN = { cache: {}, base: null };
+// الحساب نفسه في shared.js. بيانات الشهر بتتحمّل مرة واحدة، والنتيجة متخزنة لكل يوم.
+const PLAN = { cache: {}, base: undefined, month: null };
 async function pepsiPlan(date) {          // {site: {job: n}} ليوم معين
   if (PLAN.cache[date]) return PLAN.cache[date];
-  const month = date.slice(0, 7), out = {};
+  const month = date.slice(0, 7);
   try {
-    if (!PLAN.base || PLAN.base.month !== month) {
-      const plans = await getDocs(collection(db, "plans")); let pm = null, plan = null;
-      plans.forEach(d => { if (d.id <= month && (!pm || d.id > pm)) { pm = d.id; plan = d.data(); } });
-      if (!plan) return (PLAN.cache[date] = out);
-      const [am, st] = await Promise.all([getDocs(query(collection(db, "plan_amendments"), where("month", "==", pm))), getDoc(doc(db, "plan_settings", "mapping"))]);
-      const amends = []; am.forEach(d => amends.push(d.data()));
-      amends.sort((a, b) => a.effective_date.localeCompare(b.effective_date) || ((a.created_at?.seconds || 0) - (b.created_at?.seconds || 0)));
-      PLAN.base = { month, pm, plan, amends, set: st.exists() ? st.data() : null };
-    }
-    const { pm, plan, amends, set } = PLAN.base; if (!set) return (PLAN.cache[date] = out);
-    const day = pm === month ? date : pm + "-31";
-    const cmap = new Map();
-    plan.rows.forEach(r => { const k = ckey(r.loc, r.pos); const e = cmap.get(k) || { loc: pnorm(r.loc), pos: pnorm(r.pos), value: 0 }; e.value += Number(r.hc) || 0; cmap.set(k, e); });
-    cmap.forEach((e, k) => { const hits = amends.filter(a => ckey(a.loc, a.pos) === k && a.effective_date <= day); if (hits.length) e.value = hits[hits.length - 1].to; });
-    const add = (site, job, n) => { (out[site] ??= {})[job] = (out[site][job] || 0) + n; };
-    cmap.forEach(e => {
-      const job = set.posMap?.[pkey(e.pos)]; if (!job) return;
-      const split = (set.splits || []).find(x => ckey(x.loc, x.pos) === ckey(e.loc, e.pos));
-      if (split?.parts?.length) {
-        const sum = split.parts.reduce((a, p) => a + Number(p.count || 0), 0);
-        split.parts.forEach((p, i) => add(pnorm(p.site), job, Number(p.count || 0) + (i === 0 ? e.value - sum : 0)));
-        return;
-      }
-      const ov = (set.overrides || []).find(o => ckey(o.loc, o.pos) === ckey(e.loc, e.pos));
-      add(ov ? pnorm(ov.site) : set.locMap?.[pnorm(e.loc)], job, e.value);
-    });
-  } catch (e) {}
-  return (PLAN.cache[date] = out);
+    if (PLAN.month !== month) { PLAN.base = await fetchPlanBase(month); PLAN.month = month; }
+    return (PLAN.cache[date] = planBySite(PLAN.base, date));
+  } catch (e) { return (PLAN.cache[date] = {}); }
 }
 async function overPlan(list) {
   if (S.type === "sharqia") return { rows: [], note: "الشرقية مالهاش مخطط — الأعداد زي ما هي في الشيت." };

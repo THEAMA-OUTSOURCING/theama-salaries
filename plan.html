@@ -338,21 +338,10 @@ td.n,th.n{text-align:center;font-variant-numeric:tabular-nums;}
 </div>
 
 <script type="module">
-import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import { getFirestore, collection, getDocs, addDoc, doc, query, where, setDoc, getDoc, deleteDoc, updateDoc, writeBatch, serverTimestamp, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+import { db, auth, ATT_SITES } from './shared.js';
 
-const firebaseConfig = {
-  apiKey: "AIzaSyBscBbgFrEd76NjDgNPpymF1nmlvlpprdg",
-  authDomain: "theama-salaries.firebaseapp.com",
-  projectId: "theama-salaries",
-  storageBucket: "theama-salaries.firebasestorage.app",
-  messagingSenderId: "469549638177",
-  appId: "1:469549638177:web:4e5c1d4c055108312cb960"
-};
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
-const auth = getAuth(app);
 
 // ===== الإعدادات المبدئية (من مطابقة أكتوبر 2026) =====
 const DEFAULT_SETTINGS = {
@@ -837,7 +826,6 @@ $("s-save").addEventListener("click", async () => {
   } catch (err) { show(msg, "err", "ماتحفظتش: " + err.message); }
 });
 // ===== الحسابات (أدمن بس — التنفيذ على السيرفر worker.py) =====
-const ATT_SITES = ["فرع العامرية", "فرع العجمى", "مصنع العامرية", "دمنهور", "كفر الدوار", "المنصورة", "فرع طنطا", "طنطا مصنع"];
 const PLANNED = [
   { email: "dmn@theama-egy.com", label: "دمنهور", role: "supervisor", sites: ["دمنهور"] },
   { email: "kd@theama-egy.com", label: "كفر الدوار", role: "supervisor", sites: ["كفر الدوار"] },
@@ -944,7 +932,7 @@ async function runAccountTask(type, extra) {
   document.querySelectorAll('[data-panel="accounts"] button').forEach(b => b.disabled = false);
 }
 // ===== بيانات العمال (الأدمن وHR والمحاسب) =====
-const W_SITES = ["فرع العامرية", "فرع العجمى", "مصنع العامرية", "دمنهور", "كفر الدوار", "المنصورة", "فرع طنطا", "طنطا مصنع"];
+const W_SITES = ATT_SITES;
 const WS = { base: [], ovr: {}, edit: null, pending: [] };
 const arNorm = s => String(s ?? "").replace(/[أإآ]/g, "ا").replace(/ة/g, "ه").replace(/ى/g, "ي").replace(/\s+/g, " ").trim();
 const typeLabel = t => ({ "اساسي": "أساسي" }[t] || t || "—");

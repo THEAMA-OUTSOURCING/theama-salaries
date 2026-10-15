@@ -140,22 +140,10 @@ tr.foot td{background:#f3f3ef;font-weight:600;}
 </div>
 
 <script type="module">
-import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, updateDoc, query, where, serverTimestamp, writeBatch } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+import { db, auth, ATT_SITES, XL_SITES } from './shared.js';
 
-const app = initializeApp({
-  apiKey: "AIzaSyBscBbgFrEd76NjDgNPpymF1nmlvlpprdg",
-  authDomain: "theama-salaries.firebaseapp.com",
-  projectId: "theama-salaries",
-  storageBucket: "theama-salaries.firebasestorage.app",
-  messagingSenderId: "469549638177",
-  appId: "1:469549638177:web:4e5c1d4c055108312cb960"
-});
-const db = getFirestore(app), auth = getAuth(app);
-const ATT_SITES = ["فرع العامرية", "فرع العجمى", "مصنع العامرية", "دمنهور", "كفر الدوار", "المنصورة", "فرع طنطا", "طنطا مصنع"];
-// المواقع اللي حضورها بيترفع إكسيل (upload.html) — للمكتب بس حالياً
-const XL_SITES = ["قطامية", "ابوصير", "العامرية امداد", "اكتوبر امداد", "مدينة نصر امداد", "طنطا امداد", "الشرقية للدخان"];
 // خانة اليوم: 1 حاضر، غ غايب، أو الرمز زي ما هو (ج م ض ر ق ن 8 ...). p = قيمة الحضور (ن = نص يوم)
 function cellOf(e, app) {
   if (e.s === "P") return { v: e.c || "1", p: e.c === "ن" ? 0.5 : 1, hrs: !!e.x, app };   // x = ساعات في يوم راحة (الإمداد) → إضافي

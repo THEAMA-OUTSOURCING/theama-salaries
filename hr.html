@@ -58,7 +58,7 @@ label.f{display:flex;flex-direction:column;gap:3px;font-size:12px;color:#777;}
   <div id="app" class="hidden">
     <div class="row" style="justify-content:space-between;align-items:center;margin-bottom:10px;">
       <div><h1>اعتماد الحالات — الشرقية</h1><div class="muted" id="who"></div></div>
-      <div class="row"><a href="report.html" class="btn sec small" style="text-decoration:none;">تقارير الحضور</a><a href="index.html" class="btn sec small" style="text-decoration:none;">البوابة</a><button class="btn sec small" id="logout">خروج</button></div>
+      <div class="row"><a href="report.html" class="btn sec small" style="text-decoration:none;">تقارير الحضور</a><select onchange="if(this.value)location.href=this.value" style="padding:4px 8px;font-size:12px;border-radius:8px;"><option value="">انتقل إلى…</option><option value="attendance.html">تسجيل الحضور اليومي</option><option value="report.html">تقارير الحضور والاعتماد</option><option value="plan.html">الاحتياج والأعداد والحسابات</option><option value="upload.html">رفع حضور إكسيل</option><option value="hr.html">اعتماد حالات الشرقية</option><option value="index.html">لوحة الرواتب (البوابة)</option></select><button class="btn sec small" id="logout">خروج</button></div>
     </div>
     <div class="card">
       <div class="row">

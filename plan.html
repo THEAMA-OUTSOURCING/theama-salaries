@@ -111,7 +111,7 @@ td.n,th.n{text-align:center;font-variant-numeric:tabular-nums;}
       <div class="row">
         <label class="muted" for="month">الشهر</label>
         <select id="month"></select>
-        <a href="index.html" class="btn sec" style="text-decoration:none;">لوحة الرواتب</a>
+        <select onchange="if(this.value)location.href=this.value" style="padding:4px 8px;font-size:12px;border-radius:8px;"><option value="">انتقل إلى…</option><option value="attendance.html">تسجيل الحضور اليومي</option><option value="report.html">تقارير الحضور والاعتماد</option><option value="plan.html">الاحتياج والأعداد والحسابات</option><option value="upload.html">رفع حضور إكسيل</option><option value="hr.html">اعتماد حالات الشرقية</option><option value="index.html">لوحة الرواتب (البوابة)</option></select>
         <button class="btn sec" id="logout"><i class="ti ti-logout"></i> خروج</button>
       </div>
     </div>

@@ -70,7 +70,7 @@ tr.foot td{background:#f3f3ef;font-weight:600;}
   <div id="app" class="hidden">
     <div class="row noprint" style="justify-content:space-between;align-items:center;margin-bottom:10px;">
       <div><h1>تقارير الحضور</h1><div class="muted" id="who"></div></div>
-      <div class="row"><a href="hr.html" id="go-hr" class="btn sec small hidden" style="text-decoration:none;">اعتماد حالات الشرقية</a><a href="upload.html" id="go-upload" class="btn sec small hidden" style="text-decoration:none;">رفع حضور إكسيل</a><a href="index.html" class="btn sec small" style="text-decoration:none;">البوابة</a><button class="btn sec small" id="logout">خروج</button></div>
+      <div class="row"><a href="hr.html" id="go-hr" class="btn sec small hidden" style="text-decoration:none;">اعتماد حالات الشرقية</a><a href="upload.html" id="go-upload" class="btn sec small hidden" style="text-decoration:none;">رفع حضور إكسيل</a><select onchange="if(this.value)location.href=this.value" style="padding:4px 8px;font-size:12px;border-radius:8px;"><option value="">انتقل إلى…</option><option value="attendance.html">تسجيل الحضور اليومي</option><option value="report.html">تقارير الحضور والاعتماد</option><option value="plan.html">الاحتياج والأعداد والحسابات</option><option value="upload.html">رفع حضور إكسيل</option><option value="hr.html">اعتماد حالات الشرقية</option><option value="index.html">لوحة الرواتب (البوابة)</option></select><button class="btn sec small" id="logout">خروج</button></div>
     </div>
     <div class="tabs noprint">
       <button class="tab" data-tab="report" aria-selected="true">التقرير الشهري</button>

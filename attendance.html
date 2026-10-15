@@ -243,7 +243,7 @@ img[data-zoom]{cursor:zoom-in;}
 <script type="module">
 import { getFirestore, collection, addDoc, doc, getDoc, getDocs, setDoc, deleteDoc, query, where, onSnapshot, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
-import { db, auth, ATT_SITES, REGIONALS, fetchPlanBase, planBySite } from './shared.js';
+import { db, auth, ATT_SITES, fetchPlanBase, planBySite } from './shared.js';
 
 
 const $ = id => document.getElementById(id);
@@ -303,11 +303,13 @@ onAuthStateChanged(auth, async user => {
   try { claims = (await user.getIdTokenResult()).claims || {}; } catch (e) {}
   S.admin = claims.role === "admin";
   // الإقليمي: المستند config/regionals الـ Rules بتسمح بقرايته للإقليميين بس، فلو اتقري يبقى الحساب إقليمي.
-  // (مؤقتاً: لو القراية فشلت، بنرجع للقايمة اللي في الكود)
+  // (لو النت فصل، بنحاول مرة كمان قبل ما نعتبره مشرف عادي)
   S.regional = false;
   if (claims.role === "supervisor") {
-    try { S.regional = (await getDoc(doc(db, "config", "regionals"))).exists(); } catch (e) { S.regional = false; }
-    if (!S.regional) S.regional = REGIONALS.includes((user.email || "").toLowerCase());
+    for (let i = 0; i < 2 && !S.regional; i++) {
+      try { S.regional = (await getDoc(doc(db, "config", "regionals"))).exists(); break; }
+      catch (e) { if (e.code === "permission-denied") break; }
+    }
   }
   if (claims.role === "admin") S.sites = ATT_SITES;
   else if (claims.role === "supervisor" && Array.isArray(claims.sites) && claims.sites.length) S.sites = claims.sites;

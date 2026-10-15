@@ -827,45 +827,15 @@ $("s-save").addEventListener("click", async () => {
 });
 // ===== الحسابات (أدمن بس — التنفيذ على السيرفر worker.py) =====
 // ===== إعدادات الإدارة: من Firestore (config/admin) — الأدمن بس يقدر يقراها =====
-// SEED_* دي مؤقتة: أول ما الأدمن يفتح الصفحة، لو config/admin مش موجود، بتتنقل لـ Firestore.
-// بعد ما نتأكد إن النقل تمّ، القوايم دي هتتشال من الكود خالص.
+// قايمة الحسابات المخططة وإيميل استثناء الفيش والحساب المشترك مش مكتوبة في الكود (الريبو Public).
 let PLANNED = [], FICHE_EXCEPTION_EMAIL = "", SHARED_EMAIL = "";
 async function loadAdminConfig() {
-  const ref = doc(db, "config", "admin");
   try {
-    let snap = await getDoc(ref);
-    if (!snap.exists()) {
-      await setDoc(ref, { planned: SEED_PLANNED, fiche_exception_email: SEED_FICHE_EMAIL, shared_email: SEED_SHARED_EMAIL,
-        updated_by: auth.currentUser.uid, updated_at: serverTimestamp() });
-      snap = await getDoc(ref);
-    }
-    const rg = doc(db, "config", "regionals");
-    if (!(await getDoc(rg)).exists()) await setDoc(rg, { emails: SEED_REGIONALS, updated_at: serverTimestamp() });
-    const c = snap.data() || {};
+    const snap = await getDoc(doc(db, "config", "admin"));
+    const c = snap.exists() ? snap.data() : {};
     PLANNED = c.planned || []; FICHE_EXCEPTION_EMAIL = (c.fiche_exception_email || "").toLowerCase(); SHARED_EMAIL = (c.shared_email || "").toLowerCase();
-  } catch (e) {
-    // الـ Rules الجديدة لسه مااتنشرتش: نشتغل بالقوايم اللي في الكود زي الأول
-    console.warn("config/admin:", e.message);
-    PLANNED = SEED_PLANNED; FICHE_EXCEPTION_EMAIL = SEED_FICHE_EMAIL; SHARED_EMAIL = SEED_SHARED_EMAIL;
-  }
+  } catch (e) { console.warn("config/admin:", e.message); }
 }
-const SEED_REGIONALS = ["rbh@theama-egy.com", "ralx@theama-egy.com", "rdlt@theama-egy.com"];
-const SEED_SHARED_EMAIL = "supervisor@theama-egy.com";
-const SEED_PLANNED = [
-  { email: "dmn@theama-egy.com", label: "دمنهور", role: "supervisor", sites: ["دمنهور"] },
-  { email: "kd@theama-egy.com", label: "كفر الدوار", role: "supervisor", sites: ["كفر الدوار"] },
-  { email: "amb@theama-egy.com", label: "فرع العامرية + العجمي", role: "supervisor", sites: ["فرع العامرية", "فرع العجمى"] },
-  { email: "amp@theama-egy.com", label: "مصنع العامرية", role: "supervisor", sites: ["مصنع العامرية"] },
-  { email: "mns@theama-egy.com", label: "المنصورة", role: "supervisor", sites: ["المنصورة"] },
-  { email: "tnb@theama-egy.com", label: "فرع طنطا", role: "supervisor", sites: ["فرع طنطا"] },
-  { email: "tnp@theama-egy.com", label: "طنطا مصنع", role: "supervisor", sites: ["طنطا مصنع"] },
-  { email: "rbh@theama-egy.com", label: "إقليمي البحيرة", role: "supervisor", sites: ["كفر الدوار", "دمنهور"] },
-  { email: "ralx@theama-egy.com", label: "إقليمي إسكندرية", role: "supervisor", sites: ["فرع العامرية", "فرع العجمى", "مصنع العامرية"] },
-  { email: "rdlt@theama-egy.com", label: "إقليمي الدلتا", role: "supervisor", sites: ["فرع طنطا", "طنطا مصنع", "المنصورة"] },
-  { email: "emad.seif@theama-egy.com", label: "HR", role: "hr", sites: [] },
-  { email: "mohamed.abdallah@theama-egy.com", label: "المحاسب", role: "accountant", sites: [] },
-  { email: "supervisor@theama-egy.com", label: "الحساب المشترك", role: "supervisor", sites: [] }
-];
 const ROLE_AR = { admin: "أدمن", supervisor: "مشرف", hr: "HR", accountant: "محاسب" };
 let STAFF = [];
 
@@ -1022,7 +992,6 @@ function renderRem() {
         : `<button class="btn sec small" data-left="${esc(x.code)}" data-rsite="${esc(x.site)}" data-rname="${esc(x.name)}">${!WS.base.some(w => w.code === x.code) && newOf(x) ? "ارفضه (اتضاف بالغلط)" : "سجّل إنه مشي"}</button>`}</td></tr>`).join("")
       : `<tr><td colspan="6" class="muted">مفيش.</td></tr>`;
 }
-const SEED_FICHE_EMAIL = "myehia200@gmail.com";
 function ficheDue(first) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(first || "")) return null;
   const d = new Date(first + "T00:00:00"); let n = 5;

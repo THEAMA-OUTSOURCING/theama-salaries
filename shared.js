@@ -22,8 +22,7 @@ export const auth = getAuth(app);
 export const ATT_SITES = ["فرع العامرية", "فرع العجمى", "مصنع العامرية", "دمنهور", "كفر الدوار", "المنصورة", "فرع طنطا", "طنطا مصنع"];
 // المواقع اللي حضورها بيترفع إكسيل (upload.html) — للمكتب بس حالياً
 export const XL_SITES = ["قطامية", "ابوصير", "العامرية امداد", "اكتوبر امداد", "مدينة نصر امداد", "طنطا امداد", "الشرقية للدخان"];
-// المديرين الإقليميين: مرحلة مراجعة بعد المشرف وقبل المحاسب — لازم تفضل نفس القايمة اللي في firestore.rules (isRegional)
-export const REGIONALS = ["rbh@theama-egy.com", "ralx@theama-egy.com", "rdlt@theama-egy.com"];
+// المديرين الإقليميين: مش مكتوبين هنا (الريبو Public) — في firestore.rules (isRegional) وفي Firestore (config/regionals)
 
 // ===== المخطط (شيت احتياج بيبسي) =====
 const pnorm = s => String(s ?? "").replace(/\s+/g, " ").trim();

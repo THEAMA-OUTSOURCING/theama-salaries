@@ -83,7 +83,7 @@ label.f{display:flex;flex-direction:column;gap:3px;font-size:12px;color:#777;}
 
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-import { getFirestore, collection, doc, getDoc, query, where, onSnapshot, updateDoc, setDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { getFirestore, collection, doc, getDoc, getDocs, query, where, onSnapshot, updateDoc, setDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 const app = initializeApp({
   apiKey: "AIzaSyBscBbgFrEd76NjDgNPpymF1nmlvlpprdg",
@@ -99,6 +99,26 @@ const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "
 function show(el, t, x) { el.className = "msg show " + t; el.textContent = x; }
 const TY = { sick: "مرضي", leave: "إجازة", resign: "استقالة" }, ST = { pending: "مستني اعتماد", approved: "معتمد", rejected: "مرفوض" };
 let ALL = [], ALL_LOADED = false, EDIT = null, XROWS = [];
+// المستني واللي اتعدل بعد القرار: بيتسمعلهم على طول (دول اللي الـ HR محتاجهم).
+// المعتمد والمرفوض: بيتحمّلوا بس لما الفلتر يتغيّر لهم — بدل ما الصفحة تقرا كل الحالات من أول يوم بصورها.
+const LIVE_P = new Map(), LIVE_C = new Map(), DECIDED = new Map();
+let LOADED_ST = "pending";
+function rebuild() {
+  const m = new Map(DECIDED);
+  LIVE_C.forEach((v, k) => m.set(k, v)); LIVE_P.forEach((v, k) => m.set(k, v));
+  ALL = [...m.values()];
+  render();
+}
+async function loadDecided() {
+  const st = $("f-st").value;
+  if (st === "pending") { DECIDED.clear(); LOADED_ST = st; return rebuild(); }
+  show($("msg"), "info", "بيحمّل...");
+  try {
+    const sn = await getDocs(st ? query(collection(db, "hr_events"), where("status", "==", st)) : collection(db, "hr_events"));
+    DECIDED.clear(); sn.forEach(d => DECIDED.set(d.id, { id: d.id, ...d.data() }));
+    LOADED_ST = st; $("msg").className = "msg"; rebuild();
+  } catch (e) { show($("msg"), "err", "مش قادر أحمّل الحالات: " + e.message); }
+}
 const KINDS = { annual: "سنوي", casual: "عارضة", unpaid: "بدون أجر" };
 // ===== رفع إكسيل =====
 const HEAD = ["الشركة", "الموقع", "الرقم القومي", "الكود", "الاسم", "النوع (سنوي / عارضة / بدون أجر / مرضي)", "من", "لحد", "ملاحظات"];
@@ -144,10 +164,16 @@ $("xsave").onclick = async () => {
   // السطر اللي اترفع قبل كده (نفس العامل + نفس «من» + نفس النوع) مش بيتكتب فوقه، عشان قرار الـ HR ميرجعش «مستني».
   // لو اتغيّر فيه حاجة (زي «لحد»): لو لسه مستني بيتحدّث، ولو اتاخد فيه قرار بيتعلّم «اتعدل بعد القرار — راجعه».
   const byId = new Map(ALL.map(x => [x.id, x]));
+  // السطور اللي مش في اللي محمّل دلوقتي (ممكن تكون اتعتمدت قبل كده): نتأكد منها واحدة واحدة
+  const idOf = r => `xl__${r.nid || r.code}__${r.from}__${r.type}${r.kind ? "_" + r.kind : ""}`;
+  try {
+    const miss = [...new Set(XROWS.map(idOf))].filter(id => !byId.has(id));
+    (await Promise.all(miss.map(id => getDoc(doc(db, "hr_events", id))))).forEach(sn => { if (sn.exists()) byId.set(sn.id, { id: sn.id, ...sn.data() }); });
+  } catch (e) { $("xsave").disabled = false; return show($("xmsg"), "err", "مش قادر أتأكد من الحالات الموجودة: " + e.message); }
   const FIELDS = ["company", "loc", "name", "to", "days", "reason"];
   try {
     for (const r of XROWS) {
-      const id = `xl__${r.nid || r.code}__${r.from}__${r.type}${r.kind ? "_" + r.kind : ""}`;
+      const id = idOf(r);
       const ex = byId.get(id);
       if (!ex) {
         await setDoc(doc(db, "hr_events", id), { ...r, entry_date: today, status: "pending", by_email: u.email || "", uploaded_by: u.uid, created_at: serverTimestamp() });
@@ -173,12 +199,13 @@ onAuthStateChanged(auth, async user => {
   let role = null; try { role = (await user.getIdTokenResult()).claims.role || null; } catch (e) {}
   if (!["admin", "hr"].includes(role)) return $("denied").classList.remove("hidden");
   $("who").textContent = user.email; $("app").classList.remove("hidden");
-  onSnapshot(collection(db, "hr_events"), snap => {
-    ALL = snap.docs.map(d => ({ id: d.id, ...d.data() })); ALL_LOADED = true; render();
-  }, err => show($("msg"), "err", "مش قادر أقرا الحالات: " + (err.code === "permission-denied" ? "محتاج تحديث الـ Rules (hr_events)." : err.message)));
+  const onErr = err => show($("msg"), "err", "مش قادر أقرا الحالات: " + (err.code === "permission-denied" ? "محتاج تحديث الـ Rules (hr_events)." : err.message));
+  const fill = (map, snap) => { map.clear(); snap.forEach(d => map.set(d.id, { id: d.id, ...d.data() })); };
+  onSnapshot(query(collection(db, "hr_events"), where("status", "==", "pending")), snap => { fill(LIVE_P, snap); ALL_LOADED = true; rebuild(); }, onErr);
+  onSnapshot(query(collection(db, "hr_events"), where("changed", "==", true)), snap => { fill(LIVE_C, snap); rebuild(); }, onErr);
   try { const s = await getDoc(doc(db, "admin_tasks_status", "sharqia_sync")); const t = s.data()?.last_run?.toDate?.(); if (t) $("sync").textContent = "آخر تحديث: " + t.toLocaleString("ar-EG"); } catch (e) {}
 });
-["f-st", "f-ty"].forEach(i => $(i).onchange = render); $("f-q").oninput = render;
+$("f-st").onchange = loadDecided; $("f-ty").onchange = render; $("f-q").oninput = render;
 
 // إيه اللي اتغيّر في الشيت بعد القرار: القديم ← الجديد
 const CH_LABEL = { from: "من", to: "لحد", days: "الأيام", reason: "السبب", name: "الاسم", loc: "المكان", company: "الشركة", job: "الوظيفة", type: "النوع", kind: "نوع الإجازة", entry_date: "تاريخ التسجيل" };
@@ -239,7 +266,7 @@ $("list").onclick = async e => {
       original: ev.original || { type: ev.type, from: ev.from || "", to: ev.to || "", entry_date: ev.entry_date || "" },
       decided_by: u.uid, decided_email: u.email || "", decided_at: serverTimestamp(), changed: false };
     if (type === "resign") Object.assign(upd, { entry_date: f, from: "", to: "", days: "" }); else Object.assign(upd, { from: f, to: t, days });
-    try { await updateDoc(doc(db, "hr_events", id), upd); EDIT = null; show($("msg"), "ok", "اتعدل واتعتمد."); }
+    try { await updateDoc(doc(db, "hr_events", id), upd); EDIT = null; if (LOADED_ST !== "pending") await loadDecided(); show($("msg"), "ok", "اتعدل واتعتمد."); }
     catch (er) { show($("msg"), "err", "ماتحفظش: " + er.message); }
     return;
   }
@@ -254,7 +281,7 @@ $("list").onclick = async e => {
     upd = { status, note, decided_by: u.uid, decided_email: u.email || "", decided_at: serverTimestamp(), changed: false };
     if (ev.changed && ev.changed_data) Object.assign(upd, ev.changed_data);   // القرار على آخر نسخة في الشيت
   }
-  try { await updateDoc(doc(db, "hr_events", id), upd); show($("msg"), "ok", "اتحفظ."); }
+  try { await updateDoc(doc(db, "hr_events", id), upd); if (LOADED_ST !== "pending") await loadDecided(); show($("msg"), "ok", "اتحفظ."); }
   catch (er) { show($("msg"), "err", "ماتحفظش: " + (er.code === "permission-denied" ? "محتاج تحديث الـ Rules (hr_events)." : er.message)); }
 };
 $("zoom").onclick = () => $("zoom").classList.add("hidden");

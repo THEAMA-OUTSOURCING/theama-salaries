@@ -915,6 +915,12 @@ $("idm-ok").addEventListener("click", async () => {
       $("idm-ok").disabled = false;
       return;
     } else {
+      // البلاك ليست: ممنوع يتضاف (زي اللي تحت السن)
+      let banned = false; try { banned = (await getDoc(doc(db, "blacklist", d.nid))).exists(); } catch (e) {}
+      if (banned) {
+        try { await addDoc(collection(db, "att_alerts"), { type: "blacklist", site: S.site, date: S.date, detail: `${d.name} — ${d.nid}`, by: u.uid, by_email: u.email || "", at: serverTimestamp() }); } catch (e) {}
+        throw new Error("العامل ده ممنوع تشغيله في تيما. راجع الإدارة.");
+      }
       await setDoc(doc(db, "new_workers", d.nid), { nid: d.nid, name: d.name, site: S.site,
         job: ID.purpose === "roster" ? $("idm-job").value : (S.roster.find(x => x.code === ID.target)?.job || ""),
         role: ID.purpose, check_id: ID.check, first_day: S.date, added_by: u.uid, added_email: u.email || "", at: serverTimestamp() });

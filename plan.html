@@ -215,6 +215,19 @@ td.n,th.n{text-align:center;font-variant-numeric:tabular-nums;}
     <!-- بيانات العمال -->
     <section data-panel="workers" class="hidden">
       <div class="card">
+        <h2>البلاك ليست (ممنوع تشغيلهم تاني)</h2>
+        <p class="muted" style="margin-bottom:8px;">أي رقم قومي هنا، المشرف مش هيقدر يضيفه للكشف ولا كبديل، وبيوصل تنبيه للإدارة. السبب مبيظهرش للمشرفين.</p>
+        <div class="row">
+          <input id="bl-nid" placeholder="الرقم القومي" dir="ltr" style="width:170px">
+          <input id="bl-name" placeholder="الاسم" style="width:220px">
+          <select id="bl-reason"><option>سرقة</option><option>مخدرات</option><option>اعتداء / مشاجرة</option><option>تزوير</option><option>أخرى</option></select>
+          <input id="bl-note" placeholder="ملاحظة" style="width:200px">
+          <button class="btn" id="bl-add">إضافة</button>
+        </div>
+        <div class="msg" id="bl-msg"></div>
+        <div class="tbl"><table><thead><tr><th>الاسم</th><th>الرقم القومي</th><th>السبب</th><th>بواسطة</th><th></th></tr></thead><tbody id="bl-list"></tbody></table></div>
+      </div>
+      <div class="card">
         <h2>رفع تعديلات كتير من إكسيل</h2>
         <p class="muted" style="margin-bottom:8px;">شيت فيه عمود <b>الكود</b>، ومعاه عمود أو أكتر من: <b>النوع</b> (أساسي / موسمي / يومية / مشي)، <b>الوظيفة</b>، <b>الموقع</b>، <b>ساري من</b>، <b>ملاحظة</b>. ولعامل جديد مالوش كود: سيب الكود فاضي واكتب <b>الاسم</b> و<b>الرقم القومي</b> و<b>الموقع</b> و<b>النوع</b> و<b>الوظيفة</b> (هيتضاف من غير بطاقة، والمشرف يرفعها بعدين). هتشوف المقارنة قبل الحفظ.</p>
         <input type="file" id="w-file" accept=".xlsx,.xls">
@@ -412,6 +425,7 @@ onAuthStateChanged(auth, async user => {
   await loadAll();
   if (role === "admin") initAccounts();
   initWorkers();
+  initBlacklist();
 });
 
 // ===== التبويبات =====
@@ -961,6 +975,28 @@ async function initWorkers() {
   onSnapshot(collection(db, "sheet_removals"), snap => {
     WS.rem = snap.docs.map(d => ({ id: d.id, ...d.data() })); renderRem();
   }, () => {});
+}
+// ===== البلاك ليست =====
+function initBlacklist() {
+  onSnapshot(collection(db, "blacklist_info"), snap => {
+    const rows = snap.docs.map(d => d.data()).sort((a, b) => (b.at?.seconds || 0) - (a.at?.seconds || 0));
+    $("bl-list").innerHTML = rows.length ? rows.map(x => `<tr><td>${esc(x.name)}</td><td style="direction:ltr;text-align:right">${esc(x.nid)}</td><td>${esc(x.reason)}${x.note ? `<div class="muted">${esc(x.note)}</div>` : ""}</td><td class="muted">${esc(x.by_email || "")}</td><td><button class="btn sec small" data-blrm="${esc(x.nid)}">شيل</button></td></tr>`).join("")
+      : `<tr><td colspan="5" class="muted">مفيش.</td></tr>`;
+  }, () => {});
+  $("bl-add").onclick = async () => {
+    const nid = $("bl-nid").value.replace(/\D/g, ""), name = $("bl-name").value.trim(), u = auth.currentUser;
+    if (nid.length !== 14) return show($("bl-msg"), "err", "الرقم القومي لازم 14 رقم.");
+    if (!confirm(`إضافة ${name || nid} للبلاك ليست؟`)) return;
+    try {
+      await setDoc(doc(db, "blacklist", nid), { on: true });
+      await setDoc(doc(db, "blacklist_info", nid), { nid, name, reason: $("bl-reason").value, note: $("bl-note").value.trim(), by: u.uid, by_email: u.email || "", at: serverTimestamp() });
+      ["bl-nid", "bl-name", "bl-note"].forEach(i => $(i).value = ""); show($("bl-msg"), "ok", "اتضاف.");
+    } catch (e) { show($("bl-msg"), "err", "ماتضافش: " + (e.code === "permission-denied" ? "محتاج تحديث الـ Rules." : e.message)); }
+  };
+  $("bl-list").onclick = async e => {
+    const nid = e.target.dataset.blrm; if (!nid || !confirm("تشيله من البلاك ليست؟")) return;
+    try { await deleteDoc(doc(db, "blacklist", nid)); await deleteDoc(doc(db, "blacklist_info", nid)); } catch (er) { show($("bl-msg"), "err", er.message); }
+  };
 }
 function renderRem() {
     const rows = WS.rem || [];
